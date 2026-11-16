@@ -1,6 +1,7 @@
-import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
+import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice } from "obsidian";
 import type SubPagePlugin from "../main";
 import { PageNode } from "../models/pageNode";
+import { PageMetadata } from "../models/pageMetadata";
 import { PageId } from "../models/pageId";
 import { parseSubPageBlock, SubPageBlockConfig } from "../utils/subPageConfigParser";
 import { renderPageIcon } from "../components/pageIcon";
@@ -45,10 +46,46 @@ function renderBlock(
 	el.addClass("sp-block");
 	el.empty();
 
+	// frontmatter 里的图标和描述扫描时读不到，先按缺省画，读到真值再重画一次。
+	const metadata = new Map<string, PageMetadata>();
+	let epoch = plugin.service.metadataEpoch;
+	let unloaded = false;
+	const redrawIfDecorated = (nodes: PageNode[]): void => {
+		void (async () => {
+			if (epoch !== plugin.service.metadataEpoch) {
+				epoch = plugin.service.metadataEpoch;
+				metadata.clear();
+			}
+			let decorated = false;
+			for (const node of nodes) {
+				if (metadata.has(node.id)) continue;
+				const value = await plugin.service.metadataFor(node.id);
+				metadata.set(node.id, value);
+				if (value.icon || value.description) decorated = true;
+			}
+			if (decorated && !unloaded) {
+				el.empty();
+				draw();
+			}
+		})();
+	};
+
 	const draw = (): void => {
 		const node = plugin.service.nodeForSourcePath(ctx.sourcePath);
 		if (!node) {
 			el.createDiv({ cls: "sp-block-note", text: plugin.t("block.notAPage") });
+			return;
+		}
+		// 叶子页面想列子页面，缺的是目录而不是内容 —— 直接给出补齐动作，而不是只说「不行」。
+		if (node.kind !== "parent") {
+			const box = el.createDiv({ cls: "sp-block-empty" });
+			box.createSpan({ text: plugin.t("block.notParent") });
+			const pair = box.createEl("button", { text: plugin.t("block.pair"), cls: "mod-cta" });
+			pair.addEventListener("click", async () => {
+				const template = await plugin.loadTemplate();
+				const result = await plugin.service.operations.pairPage(node.id, template);
+				if (!result.ok) new Notice(result.message);
+			});
 			return;
 		}
 		const children = sortChildren(plugin.service.getChildren(node.id), config.sort);
@@ -63,10 +100,11 @@ function renderBlock(
 		const header = el.createDiv({ cls: "sp-block-header" });
 		header.createSpan({ cls: "sp-block-count", text: plugin.t("block.count", { count: children.length }) });
 		if (config.view === "card") {
-			renderCards(plugin, el, shown, config);
+			renderCards(plugin, el, shown, config, metadata);
 		} else {
-			renderList(plugin, el, shown, config);
+			renderList(plugin, el, shown, config, metadata);
 		}
+		redrawIfDecorated(shown);
 	};
 
 	draw();
@@ -81,6 +119,7 @@ function renderBlock(
 	ctx.addChild(
 		new (class extends MarkdownRenderChild {
 			onunload(): void {
+				unloaded = true;
 				plugin.unregisterBlockRefresher(refresher);
 			}
 		})(el),
@@ -100,22 +139,20 @@ function renderList(
 	el: HTMLElement,
 	nodes: PageNode[],
 	config: SubPageBlockConfig,
+	metadata: Map<string, PageMetadata>,
 ): void {
 	const list = el.createDiv({ cls: "sp-block-list" });
 	for (const node of nodes) {
 		const row = list.createDiv({ cls: "sp-block-row" });
 		row.addEventListener("click", () => void openPage(plugin, node));
+		const meta = metadata.get(node.id) ?? node.metadata;
 		if (config.showIcon) {
 			const icon = row.createSpan({ cls: "sp-icon" });
-			renderPageIcon(icon, node.kind, node.metadata);
+			renderPageIcon(icon, node.kind, meta);
 		}
 		row.createSpan({ cls: "sp-block-title", text: node.title });
-		if (config.showDescription) {
-			// 描述来自 frontmatter，主线程同步读不到 —— 先占位，读到再填。
-			void plugin.service.metadataFor(node.id).then((metadata) => {
-				if (!metadata.description) return;
-				row.createSpan({ cls: "sp-block-desc", text: metadata.description });
-			});
+		if (config.showDescription && meta.description) {
+			row.createSpan({ cls: "sp-block-desc", text: meta.description });
 		}
 	}
 }
@@ -125,22 +162,21 @@ function renderCards(
 	el: HTMLElement,
 	nodes: PageNode[],
 	config: SubPageBlockConfig,
+	metadata: Map<string, PageMetadata>,
 ): void {
 	const grid = el.createDiv({ cls: "sp-block-cards" });
 	grid.style.setProperty("--sp-columns", String(Math.max(1, config.columns)));
 	for (const node of nodes) {
 		const card = grid.createDiv({ cls: "sp-card" });
 		card.addEventListener("click", () => void openPage(plugin, node));
+		const meta = metadata.get(node.id) ?? node.metadata;
 		if (config.showIcon) {
 			const icon = card.createDiv({ cls: "sp-icon" });
-			renderPageIcon(icon, node.kind, node.metadata);
+			renderPageIcon(icon, node.kind, meta);
 		}
 		card.createDiv({ cls: "sp-card-title", text: node.title });
-		if (config.showDescription) {
-			void plugin.service.metadataFor(node.id).then((metadata) => {
-				if (!metadata.description) return;
-				card.createDiv({ cls: "sp-card-desc", text: metadata.description });
-			});
+		if (config.showDescription && meta.description) {
+			card.createDiv({ cls: "sp-card-desc", text: meta.description });
 		}
 		if (node.descendantCount > 0) {
 			card.createDiv({ cls: "sp-card-badge", text: String(node.descendantCount) });

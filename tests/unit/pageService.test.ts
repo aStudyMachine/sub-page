@@ -178,6 +178,24 @@ describe("查询", () => {
 		service.dispose();
 	});
 
+	it("front matter 被改后元数据跟着变，不吃旧缓存", async () => {
+		const vault = sampleVault();
+		const { service } = makeService(vault);
+		await service.start();
+		expect((await service.metadataFor(id("项目A"))).icon).toBe("📁");
+
+		const epochBefore = service.metadataEpoch;
+		await vault.updateFrontMatter("项目A/项目A.md", (data) => {
+			data.icon = "🧩";
+		});
+		await settle();
+
+		expect(await service.metadataFor(id("项目A")).then((m) => m.icon)).toBe("🧩");
+		// 界面靠这个数字知道该丢自己的渲染缓存
+		expect(service.metadataEpoch).toBeGreaterThan(epochBefore);
+		service.dispose();
+	});
+
 	it("搜索命中标题片段", async () => {
 		const { service } = makeService(sampleVault());
 		await service.start();

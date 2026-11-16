@@ -93,6 +93,8 @@ const ZH: Record<string, string> = {
 	"places.subpages": "子页面",
 	"block.empty": "这个页面还没有子页面",
 	"block.notAPage": "这里不是页面目录，无法列出子页面",
+	"block.notParent": "这篇笔记还不是父页面，没有可以列出的子页面",
+	"block.pair": "创建子页面目录",
 	"block.create": "新建子页面",
 	"block.count": "{count} 个子页面",
 
@@ -222,6 +224,8 @@ const EN: Record<string, string> = {
 	"places.subpages": "Sub pages",
 	"block.empty": "This page has no sub pages yet",
 	"block.notAPage": "This folder is not a page, cannot list sub pages",
+"block.notParent": "This note is not a parent page yet, so it has no sub pages",
+"block.pair": "Create sub page folder",
 	"block.create": "New sub page",
 	"block.count": "{count} sub pages",
 

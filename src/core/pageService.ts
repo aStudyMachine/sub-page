@@ -9,6 +9,7 @@ import { PageOrderStore } from "../repository/pageOrderStore";
 import { scan } from "../repository/pageScanner";
 import { isSameOrDescendantPath, normalizePath } from "../utils/pathUtils";
 import { PageOperationService } from "./pageOperationService";
+import { collectStructureIssues, StructureReport } from "./structureIssues";
 
 export interface PageServiceDeps {
 	adapter: VaultAdapter;
@@ -35,6 +36,9 @@ export class PageService {
 	readonly order: PageOrderStore;
 	readonly metadata: PageMetadataReader;
 	readonly operations: PageOperationService;
+
+	/** 每次元数据缓存失效就 +1，界面据此丢掉自己那份渲染缓存。 */
+	metadataEpoch = 0;
 
 	private unsubscribe: (() => void) | null = null;
 	private pending: ReturnType<typeof setTimeout> | null = null;
@@ -121,6 +125,13 @@ export class PageService {
 	}
 
 	private handleEvent(event: VaultEvent): void {
+		// frontmatter 可能刚被改过（图标 / 描述），缓存必须先失效，否则树会一直显示旧图标。
+		if (event.kind === "modify" || event.kind === "rename") {
+			this.metadata.forget(event.oldPath ?? event.path);
+			this.metadata.forget(event.path);
+			// 视图自己还有一层「已经补过 metadata 的 id」缓存，靠这个数字知道该丢。
+			this.metadataEpoch += 1;
+		}
 		if (this.order.isWriting && event.path.toLowerCase().endsWith(".subpage-order.json")) return;
 		// 自己写的顺序文件不该触发整树重扫。
 		if (this.order.isWriting) return;
@@ -187,6 +198,16 @@ export class PageService {
 		const node = this.index.getNode(id);
 		if (!node) return {};
 		return this.metadata.read(node);
+	}
+
+	/** 结构检查的原始素材。规则在 `core/structureIssues`，这里只负责取数。 */
+	structureReport(): StructureReport {
+		return collectStructureIssues({
+			order: this.order.current,
+			getChildren: (scope) => this.index.getChildren(scope),
+			warnings: this.index.warnings,
+			nodes: this.nodes,
+		});
 	}
 
 	stats() {

@@ -5,7 +5,7 @@ import type SubPagePlugin from "../main";
 import { buildRow } from "../components/treeRow";
 import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, requestDelete } from "../components/pageContextMenu";
 import { createDragController } from "../components/dragController";
-import { isDescendantId } from "../core/pageOperationService";
+import { childKey, isDescendantId } from "../core/pageOperationService";
 import { expandAncestors, flattenTree, navigate, pruneExpanded } from "./treeState";
 import { PageMetadata } from "../models/pageMetadata";
 import { hintSeen, markHintSeen } from "../hints";
@@ -25,6 +25,8 @@ export class PageTreeView extends ItemView {
 	private searchTerm = "";
 	private focusId: PageId | null = null;
 	private metadataCache = new Map<string, PageMetadata>();
+	private metadataEpoch = -1;
+	private searchTimer: number | null = null;
 	private drag = createDragController({
 		isForbidden: (draggedId, targetId) =>
 			draggedId === targetId || isDescendantId(targetId as PageId, draggedId as PageId),
@@ -68,7 +70,8 @@ export class PageTreeView extends ItemView {
 		}
 	}
 
-	async onClose(): Promise<void> {
+	async 	onClose(): Promise<void> {
+		if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
 		this.drag.destroy();
 	}
 
@@ -84,13 +87,20 @@ export class PageTreeView extends ItemView {
 			cls: "sp-search",
 			attr: { type: "search", placeholder: this.plugin.t("action.search"), "aria-label": this.plugin.t("action.search") },
 		});
+		// 每敲一个字符就重画整棵树，大库里会有肉眼可见的卡顿；120ms 足够盖住连续输入。
 		this.searchEl.addEventListener("input", () => {
-			this.searchTerm = this.searchEl.value;
-			this.render();
+			if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+			this.searchTimer = window.setTimeout(() => {
+				this.searchTimer = null;
+				this.searchTerm = this.searchEl.value;
+				this.render();
+			}, 120);
 		});
 		this.searchEl.addEventListener("keydown", (event: KeyboardEvent) => {
 			if (event.key === "Escape" && this.searchEl.value !== "") {
 				event.stopPropagation();
+				if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+				this.searchTimer = null;
 				this.searchEl.value = "";
 				this.searchTerm = "";
 				this.render();
@@ -153,6 +163,11 @@ export class PageTreeView extends ItemView {
 	 * 所以先按缺省图标画出来，读到真实值再重画一次。只重画一次，避免抖动。
 	 */
 	private async ensureMetadata(nodes: PageNode[]): Promise<void> {
+		// 服务那层已经因为文件被改而失效了，这份渲染缓存也得跟着丢。
+		if (this.metadataEpoch !== this.service.metadataEpoch) {
+			this.metadataEpoch = this.service.metadataEpoch;
+			this.metadataCache.clear();
+		}
 		const missing = nodes.filter((node) => node.filePath && !this.metadataCache.has(node.id));
 		if (missing.length === 0) return;
 		let decorated = false;
@@ -180,6 +195,7 @@ export class PageTreeView extends ItemView {
 			this.appendRow(node, { expanded: false, current: false, trail, highlight: this.searchTerm });
 		}
 		this.emptyEl.empty();
+		void this.ensureMetadata(hits);
 	}
 
 	private appendRow(node: PageNode, options: { expanded: boolean; current: boolean; trail?: string; highlight?: string }): void {
@@ -361,7 +377,7 @@ export class PageTreeView extends ItemView {
 		const anchor = withoutDragged.indexOf(targetId);
 		const index = position === "before" ? anchor : anchor + 1;
 		withoutDragged.splice(index, 0, draggedId);
-		const keys = withoutDragged.map((id) => this.service.getNode(id)).filter((node): node is PageNode => !!node).map(childKeyOf);
+		const keys = withoutDragged.map((id) => this.service.getNode(id)).filter((node): node is PageNode => !!node).map(childKey);
 		void this.service.operations.reorderScope(target.parentId, keys);
 	}
 
@@ -407,10 +423,6 @@ export class PageTreeView extends ItemView {
 		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
 	}
-}
-
-function childKeyOf(node: PageNode): string {
-	return node.kind === "leaf" ? (node.filePath ?? "").split("/").pop() ?? node.title : node.folderPath.split("/").pop() ?? node.title;
 }
 
 /** 属性选择器里的 id 可能含引号或中文标点，转义一次再查。 */

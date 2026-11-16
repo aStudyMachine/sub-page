@@ -1,3 +1,4 @@
+import { Platform } from "obsidian";
 import { PageNode } from "../models/pageNode";
 import { PageMetadata, EMPTY_METADATA } from "../models/pageMetadata";
 import { renderPageIcon } from "./pageIcon";
@@ -21,6 +22,9 @@ export function buildRow(options: RowOptions): HTMLElement {
 	row.setAttribute("data-id", node.id);
 	row.setAttribute("aria-level", String(node.depth + 1));
 	row.setAttribute("tabindex", "-1");
+	// HTML5 拖放的前提：元素本身可拖。缺了这一条 dragstart 永远不会触发。
+	// 移动端用手势排序，不要留下可拖状态。
+	if (Platform.isDesktopApp) row.setAttribute("draggable", "true");
 	row.style.setProperty("--sp-depth", String(node.depth));
 	if (node.childIds.length > 0) row.setAttribute("aria-expanded", String(expanded));
 	if (current) row.addClass("is-current");
