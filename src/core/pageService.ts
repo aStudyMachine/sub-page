@@ -7,7 +7,7 @@ import { PageIndex } from "../repository/pageIndex";
 import { PageMetadataReader } from "../repository/pageMetadataReader";
 import { PageOrderStore } from "../repository/pageOrderStore";
 import { scan } from "../repository/pageScanner";
-import { isSameOrDescendantPath, normalizePath } from "../utils/pathUtils";
+import { isMarkdownFile, isSameOrDescendantPath, normalizePath } from "../utils/pathUtils";
 import { PageOperationService } from "./pageOperationService";
 import { collectStructureIssues, StructureReport } from "./structureIssues";
 
@@ -136,7 +136,16 @@ export class PageService {
 		// 自己写的顺序文件不该触发整树重扫。
 		if (this.order.isWriting) return;
 		if (!this.touchesPageRoot(event)) return;
-		if (event.kind === "modify" && this.isOrderFile(event.path)) return;
+		if (event.kind === "modify") {
+			if (this.isOrderFile(event.path)) return;
+			// 树形来自目录结构、标题来自文件名，正文与 frontmatter 都改不动它。
+			// 若是全量重扫，一万页的库里每存一次盘都要重建一整棵树。
+			// 只有「索引里没有的 md」例外：同步盘直接落地的新文件常常只发 modify 不发 create。
+			if (!(isMarkdownFile(event.path) && !this.index.findByFilePath(event.path))) {
+				this.deps.onChange("metadata");
+				return;
+			}
+		}
 		this.scheduleRefresh();
 	}
 

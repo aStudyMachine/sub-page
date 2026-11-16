@@ -111,7 +111,12 @@ describe("事件驱动刷新", () => {
 		service.dispose();
 	});
 
-	it("自己写顺序文件不触发刷新", async () => {
+	it("改已入库页面的正文不重扫整树，只通知界面重读元数据", async () => {
+const vault = sampleVault();const { service, changes } = makeService(vault, {}, 20);await service.start();const spy = vi.spyOn(service, "refresh");changes.length = 0;await vault.writeText("Java/jvm/堆内存.md", "# 堆内存\n改过");await settle(60);expect(spy).not.toHaveBeenCalled();expect(changes).toContain("metadata");service.dispose();});
+it("同步盘只发 modify 的新笔记仍会进索引", async () => {
+// 同步客户端把文件直接落到磁盘上时，宿主常常只发 modify 不发 create。
+const vault = sampleVault();const { service } = makeService(vault, {}, 20);await service.start();await vault.writeText("Java/新来的.md", "# 新来的");await settle(60);expect(service.getNode(id("Java/新来的.md"))).toBeDefined();service.dispose();});
+it("自己写顺序文件不触发刷新", async () => {
 		const vault = sampleVault();
 		const { service } = makeService(vault);
 		await service.start();
