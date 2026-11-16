@@ -46,6 +46,10 @@ export function registerCommands(plugin: SubPagePlugin): void {
 		const current = plugin.currentPage();
 		openCreate(plugin, current ? (current.kind === "leaf" ? current.parentId : current.id) : null);
 	});
+	// 从别处跳回来时不该自己在一棵树里找：先把面板开起来，再展开祖先链并聚焦到当前行。
+	add("reveal-current", plugin.t("cmd.revealCurrent"), () => {
+		void plugin.activateTree().then(() => treeView()?.revealCurrent());
+	}, () => plugin.currentPage() !== undefined);
 	add("expand-all", plugin.t("cmd.expandAll"), () => treeView()?.expandAll(), () => treeView() !== undefined);
 	add("collapse-all", plugin.t("cmd.collapseAll"), () => treeView()?.collapseAll(), () => treeView() !== undefined);
 	add("rebuild-index", plugin.t("cmd.rebuildIndex"), () => {

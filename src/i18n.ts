@@ -16,7 +16,6 @@ export function resolveLanguage(setting: LanguageSetting, uiLanguage: string | u
  * 缺键回退到中文并只警告一次 —— 开发期能立刻发现，用户端不会看到空白。
  */
 const ZH: Record<string, string> = {
-	"plugin.name": "子页面",
 	"view.tree.name": "子页面",
 
 	"cmd.open": "打开子页面面板",
@@ -29,6 +28,7 @@ const ZH: Record<string, string> = {
 	"hint.welcome": "库里的任意笔记都会出现在这里；有同名目录的笔记会自动成为父页面。右键目录可以「补齐配对」。",
 	"cmd.rebuildIndex": "重建页面索引",
 	"cmd.diagnostics": "复制诊断信息",
+	"cmd.revealCurrent": "在子页面面板中定位当前页面",
 	"notice.indexing": "正在建立页面索引…",
 	"notice.diagnosticsCopied": "诊断信息已复制到剪贴板",
 	"notice.diagnosticsConsole": "剪贴板不可用，诊断信息已输出到开发者控制台",
@@ -39,8 +39,6 @@ const ZH: Record<string, string> = {
 	"menu.rename": "重命名",
 	"menu.moveTo": "移动到…",
 	"menu.delete": "删除",
-	"menu.deleteWithChildren": "删除（连同子页面）",
-	"menu.deleteNoteOnly": "只删除这篇笔记",
 	"menu.copyLink": "复制页面链接",
 	"menu.openInNewTab": "在新标签页打开",
 	"menu.pair": "升级为父页面",
@@ -54,7 +52,6 @@ const ZH: Record<string, string> = {
 
 	"action.newPage": "新建页面",
 	"action.search": "搜索页面…",
-	"action.clearSearch": "清除搜索",
 
 	"modal.create.title": "新建页面",
 	"modal.create.placeholder": "页面名称",
@@ -77,7 +74,6 @@ const ZH: Record<string, string> = {
 	"notice.deleted": "已删除 {count} 个页面",
 	"notice.noMatches": "没有匹配的页面",
 	"notice.empty": "还没有页面，点下面的按钮开始",
-	"notice.orderBroken": "顺序文件读不出来，已按名称排序",
 	"notice.rootMissing": "页面根目录不存在：{path}",
 	"notice.rebuilt": "已重建索引：{count} 个页面",
 	"notice.linkCopied": "已复制页面链接",
@@ -86,8 +82,6 @@ const ZH: Record<string, string> = {
 	"error.invalidName": "名称不合法",
 	"error.nameConflict": "同级已有同名页面",
 	"error.notFound": "页面已不存在，可能被外部改动",
-	"error.notAllowed": "这个操作不被允许",
-	"error.io": "文件操作失败：{detail}",
 	"error.name.empty": "名称不能为空",
 	"error.name.tooLong": "名称太长了（上限 100 个字符）",
 	"error.name.illegalChar": "名称不能包含 {detail}",
@@ -96,8 +90,6 @@ const ZH: Record<string, string> = {
 	"error.name.reserved": "这是系统保留名，换一个",
 	"error.moveIntoSelf": "不能移动到它自己下面",
 	"error.moveIntoDescendant": "不能移动到自己的子页面里",
-
-	"places.subpages": "子页面",
 	"block.empty": "这个页面还没有子页面",
 	"block.notAPage": "这里不是页面目录，无法列出子页面",
 	"block.notParent": "这篇笔记还不是父页面，没有可以列出的子页面",
@@ -107,11 +99,10 @@ const ZH: Record<string, string> = {
 
 	"settings.pageRoot.name": "页面根目录",
 	"settings.pageRoot.desc": "从这个目录开始展示页面树。留空表示整个库。",
-	"settings.pageRoot.invalid": "页面根目录不存在或不可访问。",
 	"settings.defaultView.name": "正文块默认视图",
 	"settings.defaultView.desc": "笔记里的子页面代码块默认用哪种样式显示。",
 	"settings.defaultSort.name": "默认排序",
-	"settings.defaultSort.desc": "没有手动排过序的页面按这个规则排列。",
+	"settings.defaultSort.desc": "正文子页面块的默认排列方式；侧栏始终按名称排，手动拖过的位置优先。",
 	"settings.showEmptyFolders.name": "显示空目录",
 	"settings.showEmptyFolders.desc": "把没有页面的目录也列出来，可以右键在里面新建页面。",
 	"settings.confirmDelete.name": "删除前确认",
@@ -139,9 +130,7 @@ const ZH: Record<string, string> = {
 	"view.card": "卡片",
 
 	"structure.title": "页面结构检查",
-	"structure.missingPair": "目录「{path}」里没有同名笔记",
 	"structure.fix": "为它创建笔记",
-	"structure.close": "关闭",
 	"structure.section.orphans": "顺序表里的孤立条目",
 	"structure.orphan": "这一项在磁盘上已经不存在了",
 	"structure.clean": "清掉",
@@ -149,7 +138,6 @@ const ZH: Record<string, string> = {
 	"structure.section.conflicts": "大小写冲突",
 	"structure.section.depth": "超出层级上限",
 	"structure.section.unpaired": "可以升级为父页面的目录",
-	"structure.pairAll": "全部补齐",
 	"structure.pairSelected": "补齐选中的 {count} 个",
 	"structure.select": "选择「{title}」",
 	"structure.confirmBulk": "要给 {count} 个目录各建一篇同名笔记，确定继续？",
@@ -158,7 +146,6 @@ const ZH: Record<string, string> = {
 };
 
 const EN: Record<string, string> = {
-	"plugin.name": "Sub Page",
 	"view.tree.name": "Sub Page",
 
 	"cmd.open": "Open sub page panel",
@@ -171,6 +158,7 @@ const EN: Record<string, string> = {
 	"hint.welcome": "Every note in your vault shows up here; a note with a folder of the same name becomes a parent page. Right-click a folder to pair it.",
 	"cmd.rebuildIndex": "Rebuild page index",
 	"cmd.diagnostics": "Copy diagnostics",
+	"cmd.revealCurrent": "Reveal current page in sub page panel",
 	"notice.indexing": "Building the page index…",
 	"notice.diagnosticsCopied": "Diagnostics copied to the clipboard",
 	"notice.diagnosticsConsole": "Clipboard unavailable; diagnostics printed to the developer console",
@@ -181,8 +169,6 @@ const EN: Record<string, string> = {
 	"menu.rename": "Rename",
 	"menu.moveTo": "Move to…",
 	"menu.delete": "Delete",
-	"menu.deleteWithChildren": "Delete (with sub pages)",
-	"menu.deleteNoteOnly": "Delete this note only",
 	"menu.copyLink": "Copy page link",
 	"menu.openInNewTab": "Open in new tab",
 	"menu.pair": "Turn into parent page",
@@ -196,7 +182,6 @@ const EN: Record<string, string> = {
 
 	"action.newPage": "New page",
 	"action.search": "Search pages…",
-	"action.clearSearch": "Clear search",
 
 	"modal.create.title": "New page",
 	"modal.create.placeholder": "Page name",
@@ -220,7 +205,6 @@ const EN: Record<string, string> = {
 	"notice.deleted": "Deleted {count} page(s)",
 	"notice.noMatches": "No matching pages",
 	"notice.empty": "No pages yet. Use the button below to create one.",
-	"notice.orderBroken": "Order file could not be read, sorted by name instead",
 	"notice.rootMissing": "Page root does not exist: {path}",
 	"notice.rebuilt": "Index rebuilt: {count} page(s)",
 	"notice.linkCopied": "Page link copied",
@@ -229,8 +213,6 @@ const EN: Record<string, string> = {
 	"error.invalidName": "Invalid name",
 	"error.nameConflict": "A page with that name already exists",
 	"error.notFound": "Page no longer exists, it may have been changed outside Obsidian",
-	"error.notAllowed": "That action is not allowed",
-	"error.io": "File operation failed: {detail}",
 	"error.name.empty": "Name cannot be empty",
 	"error.name.tooLong": "Name is too long (100 characters max)",
 	"error.name.illegalChar": "Name cannot contain {detail}",
@@ -239,8 +221,6 @@ const EN: Record<string, string> = {
 	"error.name.reserved": "That name is reserved by the system",
 	"error.moveIntoSelf": "Cannot move a page into itself",
 	"error.moveIntoDescendant": "Cannot move a page into its own sub page",
-
-	"places.subpages": "Sub pages",
 	"block.empty": "This page has no sub pages yet",
 	"block.notAPage": "This folder is not a page, cannot list sub pages",
 "block.notParent": "This note is not a parent page yet, so it has no sub pages",
@@ -250,11 +230,10 @@ const EN: Record<string, string> = {
 
 	"settings.pageRoot.name": "Page root",
 	"settings.pageRoot.desc": "Show the page tree starting from this folder. Leave empty for the whole vault.",
-	"settings.pageRoot.invalid": "Page root does not exist or is not accessible.",
 	"settings.defaultView.name": "Default block view",
 	"settings.defaultView.desc": "How the sub pages code block is rendered by default.",
 	"settings.defaultSort.name": "Default sort",
-	"settings.defaultSort.desc": "Order of pages that were never sorted manually.",
+	"settings.defaultSort.desc": "Default order inside the sub pages block. The sidebar always sorts by name, unless you dragged something.",
 	"settings.showEmptyFolders.name": "Show empty folders",
 	"settings.showEmptyFolders.desc": "List folders without pages so you can create pages inside them.",
 	"settings.confirmDelete.name": "Confirm before delete",
@@ -282,9 +261,7 @@ const EN: Record<string, string> = {
 	"view.card": "Cards",
 
 	"structure.title": "Page structure check",
-	"structure.missingPair": "Folder \"{path}\" has no note of the same name",
 	"structure.fix": "Create the note",
-	"structure.close": "Close",
 	"structure.section.orphans": "Orphaned order entries",
 	"structure.orphan": "This entry no longer exists on disk",
 	"structure.clean": "Remove",
@@ -292,7 +269,6 @@ const EN: Record<string, string> = {
 	"structure.section.conflicts": "Case conflicts",
 	"structure.section.depth": "Beyond depth limit",
 	"structure.section.unpaired": "Folders that could become parent pages",
-	"structure.pairAll": "Pair all",
 	"structure.pairSelected": "Pair {count} selected",
 	"structure.select": "Select \"{title}\"",
 	"structure.confirmBulk": "Create a matching note in {count} folders. Continue?",

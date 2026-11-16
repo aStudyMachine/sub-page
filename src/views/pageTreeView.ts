@@ -324,6 +324,7 @@ export class PageTreeView extends ItemView {
 	}
 
 	private setFocusRing(id: string): void {
+		if (!this.listEl) return;
 		for (const row of Array.from(this.listEl.children)) {
 			const element = row as HTMLElement;
 			const isTarget = element.getAttribute("data-id") === id;
@@ -433,6 +434,26 @@ export class PageTreeView extends ItemView {
 		this.expanded = new Set();
 		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
+	}
+
+	/**
+	 * 命令面板用：把当前文件定位出来。
+	 * 只调 highlightCurrent 不够 —— 它要求树已经展开过祖先链，
+	 * 面板是新开的时候整个过程还没跑过。
+	 */
+	revealCurrent(): void {
+		const id = this.currentPageId();
+		if (!id) return;
+		this.searchTerm = "";
+		if (this.searchEl) this.searchEl.value = "";
+		this.expanded = expandAncestors(
+			this.expanded,
+			this.service.getAncestors(id).map((node) => node.id as string),
+		);
+		void this.plugin.setExpandedIds(this.expanded);
+		this.render();
+		this.setFocusRing(id);
+		this.listEl?.querySelector<HTMLElement>(`.sp-row[data-id="${cssEscape(id)}"]`)?.scrollIntoView({ block: "nearest" });
 	}
 }
 
