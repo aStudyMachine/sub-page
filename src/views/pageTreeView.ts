@@ -1,4 +1,4 @@
-import { ItemView, Notice, TFile, WorkspaceLeaf, Platform } from "obsidian";
+import { App, ItemView, Notice, TFile, WorkspaceLeaf, Platform } from "obsidian";
 import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import type SubPagePlugin from "../main";
@@ -67,6 +67,15 @@ export class PageTreeView extends ItemView {
 		if (!hintSeen(this.app, "welcome")) {
 			markHintSeen(this.app, "welcome");
 			new Notice(this.plugin.t("hint.welcome"), 8000);
+		}
+		// 只读 enabledPlugins 判断重叠，不去改别人的插件状态：那是用户的选择。
+		const pluginRegistry = (this.app as App & { plugins?: { enabledPlugins?: Record<string, boolean> } }).plugins;
+		const folderNotePlugins = Object.keys(pluginRegistry?.enabledPlugins ?? {}).filter((id) =>
+			/^(obsidian-folder-note|folder-note|obsidian-folder-notes|folder-notes|waypoint)/i.test(id),
+		);
+		if (folderNotePlugins.length > 0 && !hintSeen(this.app, "folder-note")) {
+			markHintSeen(this.app, "folder-note");
+			new Notice(this.plugin.t("hint.folderNote"), 12000);
 		}
 	}
 

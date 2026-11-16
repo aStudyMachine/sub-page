@@ -68,6 +68,25 @@ export class PageOrderStore {
 		return this.order;
 	}
 
+	/**
+	 * 内容真的变了才重读。返回是否发生了变更。
+	 *
+	 * 用来接两件事：同步盘把别处的顺序文件覆盖过来（必须跟随），
+	 * 以及宿主延迟送达的自写 modify（内容一样，重读只是白跑一次整树重扫）。
+	 * 只比内容不比时间戳 —— 同一毫秒写两次时时间戳分不出来。
+	 */
+	async reloadIfChanged(): Promise<boolean> {
+		const raw = await this.adapter.readText(orderFilePath(this.pageRoot));
+		const current = raw === null ? null : raw;
+		const serialized = JSON.stringify(this.order, null, 2) + "\n";
+		const normalizedCurrent = current === null ? "" : current.trim();
+		if (normalizedCurrent === "" && Object.keys(this.order).length === 0) return false;
+		if (normalizedCurrent === serialized.trim()) return false;
+		const before = JSON.stringify(this.order);
+		await this.load();
+		return JSON.stringify(this.order) !== before;
+	}
+
 	getKeys(scope: string): string[] {
 		return this.order[scope] ?? [];
 	}

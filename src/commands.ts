@@ -54,6 +54,8 @@ export function registerCommands(plugin: SubPagePlugin): void {
 		});
 	});
 	add("check-structure", plugin.t("cmd.checkStructure"), () => new StructureModal(plugin.app, plugin).open());
+	// 报障时最省事的形式是「贴一段文本」，所以直接复制到剪贴板，同时弹一个可复制的面板。
+	add("diagnostics", plugin.t("cmd.diagnostics"), () => void plugin.copyDiagnostics());
 	// 与原生文件浏览器并存意味着同一份目录会出现两次。给一个一键折叠的命令，
 	// 而不是替用户改掉原生设置 —— 想同时看两边的人不该被强扭。
 	add("collapse-native", plugin.t("cmd.collapseNative"), () => {

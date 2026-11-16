@@ -250,7 +250,13 @@ describe("删除", () => {
 		expect(h.index.getNode(id("项目A"))?.kind).toBe("group");
 	});
 
-	it("删父页面连同子页面时整棵目录走", async () => {
+	it("关掉回收站开关时把 system=false 交给适配层", async () => {
+// 开关关闭 = 用户明确要永久删除。适配层必须能区分这两条路径，
+// 否则整个勾选框就只是个装饰品（真实适配器曾经只调 trashFile）。
+const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: false });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: false }]);});
+it("默认走回收站", async () => {
+const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: true }]);});
+it("删父页面连同子页面时整棵目录走", async () => {
 		const h = await harness(sampleVault());
 		const result = await h.ops.deletePage(id("项目A"), { withChildren: true, useTrash: true });
 		// 项目A 自己 + 需求.md + 设计 = 3

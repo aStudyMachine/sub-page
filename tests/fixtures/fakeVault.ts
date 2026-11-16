@@ -138,7 +138,11 @@ export class FakeVault implements VaultAdapter {
 		this.emit({ kind: "rename", path: target, oldPath: source, oldName: basename(source) });
 	}
 
-	async trash(path: string, _system = true): Promise<void> {
+	/** 记录删除调用，供测试断言「永久删除」与「走回收站」确实走了不同分支。 */
+	readonly trashLog: { path: string; system: boolean }[] = [];
+
+	async trash(path: string, system = true): Promise<void> {
+		this.trashLog.push({ path: normalizePath(path), system });
 		const normalized = normalizePath(path);
 		if (this.files.delete(normalized)) {
 			this.emit({ kind: "delete", path: normalized });

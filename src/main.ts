@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, TFile, getLanguage } from "obsidian";
+import { App, Notice, Platform, Plugin, TFile, apiVersion, getLanguage } from "obsidian";
 import { ObsidianVaultAdapter } from "./adapters/obsidianVaultAdapter";
 import { PageService } from "./core/pageService";
 import { SubPageSettingTab } from "./settings";
@@ -31,7 +31,8 @@ export default class SubPagePlugin extends Plugin {
 			debounceMs: 200,
 		});
 		this.register(() => this.service.dispose());
-		await this.service.start();
+		// 万页库首扫要几百毫秒。超过阈值才提示，否则正常库会闪一下没用的通知。
+		await this.startWithProgress();
 
 		this.registerView(PAGE_TREE_VIEW_TYPE, (leaf) => new PageTreeView(leaf, this));
 
@@ -53,6 +54,22 @@ export default class SubPagePlugin extends Plugin {
 
 	async onunload(): Promise<void> {
 		await this.saveSettings();
+	}
+
+	/** 首扫可能要几百毫秒；慢到用户会察觉时才提示，扫完立刻撤掉。 */
+	private async startWithProgress(): Promise<void> {
+		// 用对象承着：赋值发生在定时器回调里，TS 的控制流分析看不到，
+		// 会把变量一直当成 null，从而把 hide() 报成「属性不存在」。
+		const holder: { notice: Notice | null } = { notice: null };
+		const timer = window.setTimeout(() => {
+			holder.notice = new Notice(this.t("notice.indexing"), 0);
+		}, 400);
+		try {
+			await this.service.start();
+		} finally {
+			window.clearTimeout(timer);
+			holder.notice?.hide();
+		}
 	}
 
 	// ------------------------------------------------------------ 生命周期
@@ -181,6 +198,37 @@ export default class SubPagePlugin extends Plugin {
 		} catch (error) {
 			console.warn("[sub-page] 模板读取失败：", path, error);
 			return undefined;
+		}
+	}
+
+	/** 诊断信息：复制到剪贴板并弹一句提示。报障时最省事的形式就是贴一段文本。 */
+	async copyDiagnostics(): Promise<void> {
+		const { buildDiagnostics } = await import("./core/diagnostics");
+		const text = buildDiagnostics({
+			pluginVersion: this.manifest.version,
+			appVersion: apiVersion,
+			platform: Platform.isMobileApp ? "mobile" : "desktop",
+			language: this.language,
+			settings: {
+				pageRoot: this.settings.pageRoot,
+				defaultView: this.settings.defaultView,
+				defaultSort: this.settings.defaultSort,
+				showEmptyFolders: this.settings.showEmptyFolders,
+				excludedFolders: this.settings.excludedFolders,
+			},
+			snapshot: this.service.index.current,
+			order: this.service.order.current,
+			orderProblem: this.service.order.problem,
+			expandedCount: this.settings.expandedIds.length,
+		});
+		try {
+			await navigator.clipboard.writeText(text);
+			new Notice(this.t("notice.diagnosticsCopied"), 6000);
+		} catch (error) {
+			// 剪贴板不可用（权限 / 非 https）时退成控制台输出，至少还能拿到。
+			console.warn("[sub-page] 剪贴板不可用，诊断信息输出到控制台", error);
+			console.info(text);
+			new Notice(this.t("notice.diagnosticsConsole"), 6000);
 		}
 	}
 

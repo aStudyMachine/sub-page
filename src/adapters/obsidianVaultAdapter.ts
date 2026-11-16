@@ -102,9 +102,14 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	async trash(path: string, system = true): Promise<void> {
 		const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
 		if (!target) return;
-		// system=true 进系统回收站；false 进库内 .trash（宿主的「Obsidian 回收站」设置）。
-		await this.app.fileManager.trashFile(target);
-		void system;
+		if (system) {
+			// 走宿主的回收站设置：文件进系统回收站或库内 .trash，两种都能反悔。
+			await this.app.fileManager.trashFile(target);
+			return;
+		}
+		// 永久删除必须绕开 fileManager —— 它只会把文件挪进回收站。
+		// force=true 是宿主的确认关口，调用方（删除弹窗）已经问过用户了。
+		await this.app.vault.delete(target, true);
 	}
 
 	async readFrontMatter(path: string): Promise<Record<string, unknown> | null> {

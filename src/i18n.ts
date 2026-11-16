@@ -28,6 +28,11 @@ const ZH: Record<string, string> = {
 	"cmd.collapseNative": "折叠原生文件浏览器",
 	"hint.welcome": "库里的任意笔记都会出现在这里；有同名目录的笔记会自动成为父页面。右键目录可以「补齐配对」。",
 	"cmd.rebuildIndex": "重建页面索引",
+	"cmd.diagnostics": "复制诊断信息",
+	"notice.indexing": "正在建立页面索引…",
+	"notice.diagnosticsCopied": "诊断信息已复制到剪贴板",
+	"notice.diagnosticsConsole": "剪贴板不可用，诊断信息已输出到开发者控制台",
+	"hint.folderNote": "检测到 Folder Note 类插件。它也把「同名笔记 + 目录」当成一层页面，同时启用会让同一份结构被两边各改一次。建议只留一个。",
 
 	"menu.newChild": "新建子页面",
 	"menu.newSibling": "新建同级页面",
@@ -57,6 +62,7 @@ const ZH: Record<string, string> = {
 	"modal.move.title": "移动页面",
 	"modal.move.placeholder": "移动到哪个页面下（留空表示根层）",
 	"modal.delete.title": "删除页面",
+	"modal.delete.impact": "直接子页面 {direct} 个，全部后代 {all} 个",
 	"modal.delete.withChildren": "同时删除 {count} 个子页面",
 	"modal.delete.noteOnly": "只删除这一篇笔记，目录与子页面保留",
 	"modal.delete.useTrash": "移到回收站（取消则永久删除）",
@@ -143,6 +149,10 @@ const ZH: Record<string, string> = {
 	"structure.section.depth": "超出层级上限",
 	"structure.section.unpaired": "可以升级为父页面的目录",
 	"structure.pairAll": "全部补齐",
+	"structure.pairSelected": "补齐选中的 {count} 个",
+	"structure.select": "选择「{title}」",
+	"structure.confirmBulk": "要给 {count} 个目录各建一篇同名笔记，确定继续？",
+	"modal.confirmTitle": "请确认",
 	"structure.bulkFailed": "有 {count} 个目录没补齐，可能已存在同名笔记",
 };
 
@@ -159,6 +169,11 @@ const EN: Record<string, string> = {
 	"cmd.collapseNative": "Collapse native file explorer",
 	"hint.welcome": "Every note in your vault shows up here; a note with a folder of the same name becomes a parent page. Right-click a folder to pair it.",
 	"cmd.rebuildIndex": "Rebuild page index",
+	"cmd.diagnostics": "Copy diagnostics",
+	"notice.indexing": "Building the page index…",
+	"notice.diagnosticsCopied": "Diagnostics copied to the clipboard",
+	"notice.diagnosticsConsole": "Clipboard unavailable; diagnostics printed to the developer console",
+	"hint.folderNote": "A folder-note plugin is enabled. It also treats a note plus its same-named folder as one page, so the two will keep writing over each other. Keep only one of them.",
 
 	"menu.newChild": "New sub page",
 	"menu.newSibling": "New sibling page",
@@ -188,6 +203,7 @@ const EN: Record<string, string> = {
 	"modal.move.title": "Move page",
 	"modal.move.placeholder": "Target page (leave empty for root)",
 	"modal.delete.title": "Delete page",
+	"modal.delete.impact": "{direct} direct sub pages, {all} in total",
 	"modal.delete.withChildren": "Also delete {count} sub pages",
 	"modal.delete.noteOnly": "Delete this note only, keep the folder and sub pages",
 	"modal.delete.useTrash": "Move to trash (uncheck to delete permanently)",
@@ -274,6 +290,10 @@ const EN: Record<string, string> = {
 	"structure.section.depth": "Beyond depth limit",
 	"structure.section.unpaired": "Folders that could become parent pages",
 	"structure.pairAll": "Pair all",
+	"structure.pairSelected": "Pair {count} selected",
+	"structure.select": "Select \"{title}\"",
+	"structure.confirmBulk": "Create a matching note in {count} folders. Continue?",
+	"modal.confirmTitle": "Please confirm",
 	"structure.bulkFailed": "{count} folder(s) could not be paired; a note with the same name may exist",
 };
 

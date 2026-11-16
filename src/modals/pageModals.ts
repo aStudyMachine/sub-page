@@ -318,6 +318,14 @@ export class DeletePageModal extends Modal {
 		if (this.node.kind === "parent") {
 			// 有子页面才有第二个选项，否则「连带删除」与「只删笔记」是同一件事。
 			if (this.node.descendantCount > 0) {
+				// 两个数字分开给：直接子页面是「我看得见的几行」，全部后代是「会一起被移走的页面数」。
+				// 只给后者的话，深层子页面会被当成不存在。
+				body.createEl("p", {
+					text: this.plugin.t("modal.delete.impact", {
+						direct: this.node.childIds.length,
+						all: this.node.descendantCount,
+					}),
+				});
 				new Setting(this.contentEl)
 					.setName(this.plugin.t("modal.delete.withChildren", { count: this.node.descendantCount }))
 					.setDesc(this.plugin.t("modal.delete.noteOnly"))
@@ -341,6 +349,38 @@ export class DeletePageModal extends Modal {
 		buttons
 			.createEl("button", { text: this.plugin.t("modal.cancel") })
 			.addEventListener("click", () => this.close());
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * 通用确认框。批量动作数量到了一定规模时用 ——
+ * 多一次点击，比事后修一棵改错的结构便宜。
+ */
+export class ConfirmModal extends Modal {
+	constructor(
+		app: App,
+		private readonly plugin: SubPagePlugin,
+		private readonly message: string,
+		private readonly onConfirm: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.titleEl.setText(this.plugin.t("modal.confirmTitle"));
+		this.contentEl.createEl("p", { text: this.message });
+		const buttons = this.contentEl.createDiv({ cls: "sp-modal-buttons" });
+		buttons
+			.createEl("button", { text: this.plugin.t("modal.confirm"), cls: "mod-warning" })
+			.addEventListener("click", () => {
+				this.onConfirm();
+				this.close();
+			});
+		buttons.createEl("button", { text: this.plugin.t("modal.cancel") }).addEventListener("click", () => this.close());
 	}
 
 	onClose(): void {

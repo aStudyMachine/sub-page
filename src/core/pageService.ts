@@ -137,7 +137,14 @@ export class PageService {
 		if (this.order.isWriting) return;
 		if (!this.touchesPageRoot(event)) return;
 		if (event.kind === "modify") {
-			if (this.isOrderFile(event.path)) return;
+			if (this.isOrderFile(event.path)) {
+				// 同步盘把别处的顺序文件覆盖过来时必须跟随；而自己刚才写的那一份
+				// 常常会因为事件延迟送达而走到这里，内容没变就不该白白重扫一遍。
+				void this.order.reloadIfChanged().then((changed) => {
+					if (changed) this.scheduleRefresh();
+				});
+				return;
+			}
 			// 树形来自目录结构、标题来自文件名，正文与 frontmatter 都改不动它。
 			// 若是全量重扫，一万页的库里每存一次盘都要重建一整棵树。
 			// 只有「索引里没有的 md」例外：同步盘直接落地的新文件常常只发 modify 不发 create。

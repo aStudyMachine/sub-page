@@ -1,6 +1,10 @@
 import { App, Modal, Notice } from "obsidian";
 import type SubPagePlugin from "../main";
 import { OrphanEntry } from "../core/structureIssues";
+import { ConfirmModal } from "./pageModals";
+
+/** 一次改这么多目录已经不是顺手清理了，先让用户看一眼。 */
+const BULK_CONFIRM_THRESHOLD = 50;
 import { PageNode } from "../models/pageNode";
 
 /**
@@ -71,16 +75,45 @@ export class StructureModal extends Modal {
 
 		if (report.groups.length > 0) {
 			const section = this.section("structure.section.unpaired");
+			// 多选：几十个目录逐个点按钮点不完，勾完一次做完。
+			const selected = new Set<string>(report.groups.map((node) => node.id));
+			let syncBulk: () => void = () => undefined;
 			for (const node of report.groups) {
 				const row = section.createDiv({ cls: "sp-structure-row" });
+				const box = row.createEl("input", { type: "checkbox", cls: "sp-check" });
+				box.checked = true;
+				box.setAttribute("aria-label", this.plugin.t("structure.select", { title: node.title }));
+				box.addEventListener("change", () => {
+					if (box.checked) selected.add(node.id);
+					else selected.delete(node.id);
+					syncBulk();
+				});
 				row.createSpan({ cls: "sp-structure-path", text: node.folderPath });
 				row.createEl("button", { text: this.plugin.t("structure.fix") }).addEventListener("click", () => {
 					void this.pairOne(node);
 				});
 			}
 			if (report.groups.length > 1) {
-				const all = section.createEl("button", { text: this.plugin.t("structure.pairAll") });
-				all.addEventListener("click", () => void this.pairAll(report.groups));
+				const bulk = section.createEl("button", { text: this.plugin.t("structure.pairSelected", { count: selected.size }) });
+				syncBulk = () => {
+					bulk.setText(this.plugin.t("structure.pairSelected", { count: selected.size }));
+					bulk.disabled = selected.size === 0;
+				};
+				bulk.addEventListener("click", () => {
+					const targets = report.groups.filter((node) => selected.has(node.id));
+					// 一次改五十个以上的目录就不再是「顺手清理」，得让用户停下来看一眼。
+					if (targets.length > BULK_CONFIRM_THRESHOLD) {
+						new ConfirmModal(
+							this.app,
+							this.plugin,
+							this.plugin.t("structure.confirmBulk", { count: targets.length }),
+							() => void this.pairAll(targets),
+						).open();
+						return;
+					}
+					void this.pairAll(targets);
+				});
+				syncBulk();
 			}
 		}
 

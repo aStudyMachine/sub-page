@@ -99,6 +99,31 @@ describe("顺序文件读写", () => {
 		expect(store.getKeys("b.md")).toEqual([]);
 	});
 
+	it("外部改写了顺序文件时 reloadIfChanged 跟随", async () => {
+		const vault = new FakeVault({ "a.md": "", "b.md": "" });
+		const store = new PageOrderStore(vault, "");
+		await store.load();
+		vault.stopEvents();
+		await vault.writeText(path(), JSON.stringify({ "": ["b.md", "a.md"] }));
+		expect(await store.reloadIfChanged()).toBe(true);
+		expect(store.getKeys("")).toEqual(["b.md", "a.md"]);
+	});
+
+	it("内容没变时 reloadIfChanged 返回 false", async () => {
+		const vault = new FakeVault({ "a.md": "", "b.md": "" });
+		const store = new PageOrderStore(vault, "");
+		await store.load();
+		await store.reorder("", ["b.md", "a.md"]);
+		// 宿主延迟送达的自写 modify 就是这种形状：文件还是自己写的那一份。
+		expect(await store.reloadIfChanged()).toBe(false);
+	});
+
+	it("文件还不存在时 reloadIfChanged 不报变更", async () => {
+		const store = new PageOrderStore(new FakeVault({ "a.md": "" }), "");
+		await store.load();
+		expect(await store.reloadIfChanged()).toBe(false);
+	});
+
 	it("自写期间 isWriting 为真，写完复位", async () => {
 		const vault = new FakeVault();
 		const store = new PageOrderStore(vault, "");
