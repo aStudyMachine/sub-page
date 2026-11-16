@@ -65,6 +65,7 @@ const ZH: Record<string, string> = {
 	"modal.delete.impact": "直接子页面 {direct} 个，全部后代 {all} 个",
 	"modal.delete.withChildren": "同时删除 {count} 个子页面",
 	"modal.delete.noteOnly": "只删除这一篇笔记，目录与子页面保留",
+	"modal.delete.groupImpact": "这是分组目录，没有自己的笔记：连同下面 {direct} 个直接子项、{all} 个后代页面一起移走",
 	"modal.delete.useTrash": "移到回收站（取消则永久删除）",
 	"modal.confirm": "确定",
 	"modal.cancel": "取消",
@@ -206,6 +207,8 @@ const EN: Record<string, string> = {
 	"modal.delete.impact": "{direct} direct sub pages, {all} in total",
 	"modal.delete.withChildren": "Also delete {count} sub pages",
 	"modal.delete.noteOnly": "Delete this note only, keep the folder and sub pages",
+	"modal.delete.groupImpact":
+		"This is a group folder with no note of its own: {direct} direct children and {all} pages underneath go with it",
 	"modal.delete.useTrash": "Move to trash (uncheck to delete permanently)",
 	"modal.confirm": "OK",
 	"modal.cancel": "Cancel",

@@ -276,7 +276,8 @@ export class PageOperationService {
 		}
 
 		const target = node.kind === "leaf" ? node.filePath! : node.folderPath;
-		const deletedPages = node.kind === "leaf" ? 1 : node.descendantCount + 1;
+		// 分组目录自己没有笔记，后代数就是全部页面数；父页面要把它自己那一篇算上。
+		const deletedPages = node.kind === "leaf" ? 1 : node.kind === "group" ? node.descendantCount : node.descendantCount + 1;
 		try {
 			await this.adapter.trash(target, options.useTrash);
 		} catch (error) {

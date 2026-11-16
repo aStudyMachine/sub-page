@@ -315,6 +315,17 @@ export class DeletePageModal extends Modal {
 		const body = this.contentEl.createDiv({ cls: "sp-modal-body" });
 		body.createEl("p", { text: this.node.title });
 
+		if (this.node.kind === "group") {
+			// 分组目录没有自己的笔记，删它就是删整个目录 —— 不写清楚会把「删一个空壳」
+			// 当成小事，实际连里面所有笔记一起走。
+			body.createEl("p", {
+				text: this.plugin.t("modal.delete.groupImpact", {
+					direct: this.node.childIds.length,
+					all: this.node.descendantCount,
+				}),
+			});
+		}
+
 		if (this.node.kind === "parent") {
 			// 有子页面才有第二个选项，否则「连带删除」与「只删笔记」是同一件事。
 			if (this.node.descendantCount > 0) {

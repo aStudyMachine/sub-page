@@ -291,6 +291,13 @@ describe("删除", () => {
 const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: false });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: false }]);});
 it("默认走回收站", async () => {
 const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: true }]);});
+it("删分组目录时计数不把自己算成一篇笔记", async () => {
+                const h = await harness(sampleVault());
+                // Java 是分组目录：jvm 下两篇 + 并发下一篇，共 3 篇，没有「Java.md」。
+                const result = await h.ops.deletePage(id("Java"), { withChildren: true, useTrash: true });
+                expect(result).toMatchObject({ ok: true, value: { deletedPages: 3 } });
+                expect(h.vault.folderPaths()).not.toContain("Java");
+        });
 it("删父页面连同子页面时整棵目录走", async () => {
 		const h = await harness(sampleVault());
 		const result = await h.ops.deletePage(id("项目A"), { withChildren: true, useTrash: true });
