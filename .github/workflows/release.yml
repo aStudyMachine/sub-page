@@ -1,0 +1,81 @@
+name: Release
+
+# 只在默认分支手动触发。Error 级审阅问题会让插件在社区目录搜不到，
+# 且同一版本重发不会重跑审阅 —— 所以发布前必须先升版本。
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只构建并打印校验和
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      # 版本三处必须一致，否则社区目录会显示旧版本号。
+      - name: 版本一致性
+        run: |
+          MANIFEST=$(node -p "require('./manifest.json').version")
+          PACKAGE=$(node -p "require('./package.json').version")
+          VERSIONS=$(node -p "Object.keys(require('./versions.json')).pop()")
+          echo "manifest=$MANIFEST package=$PACKAGE versions=$VERSIONS"
+          test "$MANIFEST" = "$PACKAGE" && test "$MANIFEST" = "$VERSIONS"
+
+      # 社区审阅会把这些当成 Error，本地先挡一遍。
+      - name: 审阅守卫
+        run: |
+          if grep -rnE '\.style\.[a-zA-Z]+ *=' src/ ; then
+            echo "::error::禁止直接改 .style.xxx 属性，请用 CSS 类"; exit 1
+          fi
+          if grep -rn 'document\.createElement' src/ ; then
+            echo "::error::请用 createEl / createDiv"; exit 1
+          fi
+          COUNT=$(grep -cE '^[[:space:]]*[a-z-]+[[:space:]]*:.*!important' styles.css || true)
+          echo "!important 声明数：$COUNT"
+          test "$COUNT" -le 3
+
+      - name: 校验和
+        run: |
+          for file in main.js manifest.json styles.css; do
+            echo "$(sha256sum "$file")"
+          done
+
+      - name: 打包
+        if: inputs.dry_run == false
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          zip -j "sub-page-$VERSION.zip" main.js manifest.json styles.css
+
+      - name: 证明来源
+        if: inputs.dry_run == false
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "sub-page-*.zip"
+
+      - name: 发布
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          gh release create "$VERSION" main.js manifest.json styles.css "sub-page-$VERSION.zip" \
+            --title "$VERSION" --notes-file "docs/release-notes/$VERSION.md"

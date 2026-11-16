@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+main.js
+*.js.map
+
+# Plugin runtime data (personal settings)
+data.json
+
+# Local test vault (never committed)
+test-vault/
+
+# Local tooling / notes
+.qoder/
+.trae/
+.zcode/
+.workbuddy/
+.agents/*
+!.agents/plan/
+!.agents/skills/
+
+.env
+.env.*
+*.local
+*.log
+
+# Obsidian vault leftovers
+.obsidian/
+
+# OS junk
+.DS_Store
+Thumbs.db
+.idea/

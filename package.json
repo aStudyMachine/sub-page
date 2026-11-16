@@ -1,0 +1,32 @@
+{
+  "name": "sub-page",
+  "version": "0.0.1",
+  "description": "Notion-style nested pages for Obsidian: a page tree over your existing vault, with sub-page blocks in notes.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "perf": "vitest run tests/perf",
+    "deploy": "node scripts/deploy.mjs",
+    "bump": "node scripts/bump-version.mjs",
+    "gen-vault": "node scripts/gen-vault.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "pages",
+    "tree",
+    "folder-note",
+    "notion"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}
