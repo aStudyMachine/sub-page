@@ -241,6 +241,14 @@ describe("删除", () => {
 		expect(h.vault.filePaths()).toContain("笔记规范.md");
 	});
 
+	it("只删父页面笔记时保留它在同级里的顺序位置", async () => {
+		const h = await harness(sampleVault());
+		await h.order.setKeys("", ["首页.md", "项目A"]);
+		await h.ops.deletePage(id("项目A"), { withChildren: false, useTrash: true });
+		// 目录还在，降级成同名分组目录，键没变，位置就该留着。
+		expect(h.order.getKeys("")).toEqual(["首页.md", "项目A"]);
+	});
+
 	it("删父页面但保留子页面时只删笔记，目录降级为分组目录", async () => {
 		const h = await harness(sampleVault());
 		const result = await h.ops.deletePage(id("项目A"), { withChildren: false, useTrash: true });
@@ -294,6 +302,23 @@ describe("配对与解除配对", () => {
 		expect(result).toMatchObject({ ok: true, value: "首页" });
 		expect(h.vault.folderPaths()).toContain("首页");
 		expect(h.index.getNode(id("首页"))?.kind).toBe("parent");
+	});
+
+	it("配对升级为父页面后，它在同级里的位置原地保留", async () => {
+		const vault = new FakeVault({ "Pages/Java/新笔记.md": "", "Pages/Java/jvm/堆.md": "" });
+		const h = await harness(vault, "Pages");
+		await h.order.setKeys("Java", ["新笔记.md", "jvm"]);
+		expect(await h.ops.pairPage(id("Java/新笔记.md"))).toMatchObject({ ok: true, value: "Java/新笔记" });
+		// 键的口径跟着节点类型变（叶子带 .md、父页面不带），但位置不该被打回按名排序。
+		expect(h.order.getKeys("Java")).toEqual(["新笔记", "jvm"]);
+	});
+
+	it("解除配对降级为叶子后，位置同样原地保留", async () => {
+		const vault = new FakeVault({ "空项目/空项目.md": "", "另一个.md": "" });
+		const h = await harness(vault);
+		await h.order.setKeys("", ["空项目", "另一个.md"]);
+		expect(await h.ops.unpairPage(id("空项目"))).toMatchObject({ ok: true });
+		expect(h.order.getKeys("")).toEqual(["空项目.md", "另一个.md"]);
 	});
 
 	it("分组目录升级为父页面：补一个同名笔记", async () => {

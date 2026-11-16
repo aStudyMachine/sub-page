@@ -155,6 +155,44 @@ export class PageOrderStore {
 		if (changed) await this.flush();
 	}
 
+	/**
+	 * 把 from 这棵子树的作用域整体改名成 to 开头。
+	 *
+	 * 父页面改名或移动时，它**子页面**的排列顺序存在以它为作用域的那一段里，
+	 * 只改父一级的键会留下一个永远读不到的作用域 —— 用户的排序静默丢失，
+	 * 还会在结构检查里变成一堆孤立条目。
+	 */
+	async remapScopeTree(from: string, to: string): Promise<void> {
+		await this.ensureLoaded();
+		if (from === to) return;
+		const prefix = from + "/";
+		let changed = false;
+		for (const key of Object.keys(this.order)) {
+			if (key !== from && !key.startsWith(prefix)) continue;
+			const next = to + key.slice(from.length);
+			const keys = this.order[key];
+			delete this.order[key];
+			const existing = this.order[next] ?? [];
+			// 目标作用域已经存在时合并去重，不覆盖 —— 两个都可能是用户排过的。
+			this.order[next] = [...existing, ...keys.filter((item) => !existing.includes(item))];
+			changed = true;
+		}
+		if (changed) await this.flush();
+	}
+
+	/** 删掉以 scope 为根的整棵子树的作用域（整棵子树被移除时用）。 */
+	async removeScopeTree(scope: string): Promise<void> {
+		await this.ensureLoaded();
+		const prefix = scope + "/";
+		let changed = false;
+		for (const key of Object.keys(this.order)) {
+			if (key !== scope && !key.startsWith(prefix)) continue;
+			delete this.order[key];
+			changed = true;
+		}
+		if (changed) await this.flush();
+	}
+
 	/** 直接铺一个作用域的完整次序（拖拽排序用）。 */
 	async reorder(scope: string, keys: string[]): Promise<void> {
 		await this.setKeys(scope, keys);

@@ -140,6 +140,7 @@ export class PageOperationService {
 				return fail("io-error", `重命名失败：${messageOf(error)}`);
 			}
 			await this.order.renameKey(scopeOfNode(node), basename(from), title);
+			await this.order.remapScopeTree(node.id, this.relativeId(to));
 			await this.deps.refresh();
 			return ok(this.relativeId(to) as PageId);
 		}
@@ -161,6 +162,8 @@ export class PageOperationService {
 			return fail("io-error", `重命名失败（已回滚）：${messageOf(error)}`);
 		}
 		await this.order.renameKey(scopeOfNode(node), basename(fromFolder), title);
+		// 子页面的排列顺序存在以旧 id 为作用域的那一段里，必须一起搬过去。
+		await this.order.remapScopeTree(node.id, this.relativeId(toFolder));
 		await this.deps.refresh();
 		return ok(this.relativeId(toFolder) as PageId);
 	}
@@ -210,6 +213,8 @@ export class PageOperationService {
 			return fail("io-error", `移动失败：${messageOf(error)}`);
 		}
 		await this.order.moveKey(oldScope, newScope, basename(from));
+		// 整棵子树的 id 都变了（它们是「绝对相对路径」），子页面的顺序作用域也得跟着搬。
+		await this.order.remapScopeTree(node.id, this.relativeId(to));
 		await this.deps.refresh();
 		return ok(this.relativeId(to) as PageId);
 	}
@@ -227,7 +232,8 @@ export class PageOperationService {
 			} catch (error) {
 				return fail("io-error", `删除失败：${messageOf(error)}`);
 			}
-			await this.order.removeFromScope(scopeOfNode(node), basename(node.folderPath));
+			// 不摘顺序条目：目录还在，它降级成同名的分组目录，键一个字符都没变。
+			// 摘掉等于把用户排好的位置悄悄打回按名排序。
 			await this.deps.refresh();
 			return ok({ deletedPages: 1 });
 		}
@@ -240,6 +246,8 @@ export class PageOperationService {
 			return fail("io-error", `删除失败：${messageOf(error)}`);
 		}
 		await this.order.removeFromScope(scopeOfNode(node), basename(target));
+		// 整棵子树都进回收站了，它下面每一层的作用域都成了孤立条目。
+		await this.order.removeScopeTree(node.id);
 		await this.order.removeKey(node.id);
 		await this.deps.refresh();
 		return ok({ deletedPages });
@@ -271,7 +279,9 @@ export class PageOperationService {
 				await this.adapter.trash(folderPath).catch(() => undefined);
 				return fail("io-error", `创建目录成功但笔记搬不进去：${messageOf(error)}`);
 			}
-			await this.order.moveKey(scopeOfNode(node), folderPath, basename(from), basename(to));
+			// 升级成父页面后，它在本层的键从「名字.md」变成「名字」（键的口径跟着节点类型走），
+			// 位置必须原地保留 —— 否则一次配对就把用户排好的顺序打回按名排序。
+			await this.order.renameKey(scopeOfNode(node), basename(from), basename(folderPath));
 			await this.deps.refresh();
 			return ok(this.relativeId(folderPath) as PageId);
 		}
@@ -312,7 +322,13 @@ export class PageOperationService {
 		} catch (error) {
 			return fail("io-error", `笔记已移出，但空目录没删掉：${messageOf(error)}`);
 		}
-		await this.order.removeKey(node.id);
+		// 降级成叶子页面后，键从「名字」变回「名字.md」，同样原地保留位置。
+		await this.order.renameKey(
+			scopeOfNode(node),
+			basename(node.folderPath),
+			basename(joinPath(parentFolder, node.title + ".md")),
+		);
+		await this.order.removeScopeTree(node.id);
 		await this.deps.refresh();
 		return ok(this.relativeId(joinPath(parentFolder, node.title + ".md")) as PageId);
 	}
