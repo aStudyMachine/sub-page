@@ -177,6 +177,33 @@ describe("重命名", () => {
 		vault.renameFile = original;
 	});
 
+	it("只改大小写不算重名：分组目录", async () => {
+		const h = await harness(sampleVault());
+		const result = await h.ops.renamePage(id("Java/jvm"), "JVM");
+		expect(result).toMatchObject({ ok: true });
+		expect(h.vault.folderPaths()).toContain("Java/JVM");
+		expect(h.vault.filePaths()).toContain("Java/JVM/堆内存.md");
+	});
+
+	it("只改大小写不算重名：叶子页面", async () => {
+		const vault = new FakeVault();
+		vault.seedFile("README.md", "");
+		const h = await harness(vault);
+		const result = await h.ops.renamePage(id("README.md"), "Readme");
+		expect(result).toMatchObject({ ok: true, value: "Readme.md" });
+		expect(h.vault.filePaths()).toEqual(["Readme.md"]);
+	});
+
+	it("别的大小写只差一旁的邻居仍然算冲突", async () => {
+		const vault = new FakeVault();
+		vault.seedFile("abc.md", "");
+		vault.seedFile("ABC.md", "");
+		const h = await harness(vault);
+		// 两个文件同时存在时索引会报大小写冲突，但改名仍要挡住「变成另一个」这种操作。
+		const result = await h.ops.renamePage(id("abc.md"), "ABC");
+		expect(result.ok).toBe(false);
+	});
+
 	it("改名后的 id 反映新路径", async () => {
 		const h = await harness(sampleVault());
 		const result = await h.ops.renamePage(id("项目A/需求.md"), "需求清单");

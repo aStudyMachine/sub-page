@@ -95,6 +95,24 @@ export function expandAncestors(expanded: Set<string>, ancestorIds: readonly str
 	return next;
 }
 
+/**
+ * 子树整体换了 id（改名 / 移动）后搬动展开状态。
+ *
+ * id 是路径，所以要么本身命中，要么落在 from + "/" 下面。不搬的话下一次渲染
+ * pruneExpanded 会把旧 id 当成已删除的页面清掉，用户排好的展开层级就没了。
+ */
+export function remapExpanded(expanded: ReadonlySet<string>, from: string, to: string): Set<string> {
+	if (from === to) return new Set(expanded);
+	const next = new Set<string>();
+	const prefix = from + "/";
+	for (const id of expanded) {
+		if (id === from) next.add(to);
+		else if (id.startsWith(prefix)) next.add(to + id.slice(from.length));
+		else next.add(id);
+	}
+	return next;
+}
+
 /** 索引变化后清理不存在的 id：页面被删了，展开状态不该永久留脏数据。 */
 export function pruneExpanded(expanded: Set<string>, existing: ReadonlySet<string>): Set<string> {
 	const next = new Set<string>();

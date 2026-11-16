@@ -5,6 +5,7 @@ import { SubPageSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, SubPageSettings, migrateSettings } from "./models/settings";
 import { Translator, resolveLanguage } from "./i18n";
 import { PAGE_TREE_VIEW_TYPE, PageTreeView } from "./views/pageTreeView";
+import { remapExpanded } from "./views/treeState";
 import { registerSubPageBlockProcessor } from "./views/subPageRenderer";
 import { registerCommands } from "./commands";
 import { findConflictingPlugins } from "./utils/conflictingPlugins";
@@ -28,6 +29,7 @@ export default class SubPagePlugin extends Plugin {
 			adapter: new ObsidianVaultAdapter(this.app),
 			settings: () => this.settings,
 			onChange: () => this.refreshViews(),
+			onIdsRenamed: (from, to) => this.remapExpandedIds(from, to),
 			onProblem: (message) => new Notice(message, 6000),
 			debounceMs: 200,
 		});
@@ -139,6 +141,19 @@ export default class SubPagePlugin extends Plugin {
 			return;
 		}
 		await this.updateSettings({ expandedIds: next });
+	}
+
+	/**
+	 * 子树改名或移动后，把所有按 id 存的界面状态搬过去。
+	 * 只搬设置里那份；已经打开的侧栏自己有副本，一并通知它搬。
+	 */
+	async remapExpandedIds(from: string, to: string): Promise<void> {
+		const next = remapExpanded(new Set(this.settings.expandedIds), from, to);
+		this.settings = { ...this.settings, expandedIds: Array.from(next) };
+		await this.saveSettings();
+		for (const leaf of this.app.workspace.getLeavesOfType(PAGE_TREE_VIEW_TYPE)) {
+			if (leaf.view instanceof PageTreeView) leaf.view.applyExpanded(next);
+		}
 	}
 
 	// ------------------------------------------------------------ 视图

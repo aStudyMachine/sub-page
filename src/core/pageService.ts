@@ -1,5 +1,5 @@
 import { VaultAdapter, VaultEvent } from "../adapters/vaultAdapter";
-import { PageId, isRootScope } from "../models/pageId";
+import { PageId } from "../models/pageId";
 import { PageMetadata } from "../models/pageMetadata";
 import { PageNode } from "../models/pageNode";
 import { SubPageSettings } from "../models/settings";
@@ -20,6 +20,8 @@ export interface PageServiceDeps {
 	onProblem?: (message: string) => void;
 	/** 观察外部变更的节流窗口（毫秒）。 */
 	debounceMs?: number;
+	/** 子树 id 整体变了（改名 / 移动），宿主据此搬动展开状态这类按 id 存的界面状态。 */
+	onIdsRenamed?: (from: string, to: string) => Promise<void>;
 }
 
 /**
@@ -54,8 +56,9 @@ export class PageService {
 			order: this.order,
 			getNode: (id) => this.index.getNode(id),
 			getChildren: (scope) => this.index.getChildren(scope),
-			getPageRoot: () => this.deps.settings().pageRoot,
-			refresh: () => this.refresh(),
+				getPageRoot: () => this.deps.settings().pageRoot,
+				refresh: () => this.refresh(),
+				renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
 		});
 	}
 
@@ -233,9 +236,5 @@ export class PageService {
 
 	stats() {
 		return this.index.stats();
-	}
-
-	get isRootScopeEmpty(): boolean {
-		return isRootScope(null) && this.index.getRoots().length === 0;
 	}
 }

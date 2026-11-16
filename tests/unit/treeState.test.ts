@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PageId } from "../../src/models/pageId";
 import { PageNode } from "../../src/models/pageNode";
-import { expandAncestors, flattenTree, navigate, pruneExpanded } from "../../src/views/treeState";
+import { expandAncestors, flattenTree, navigate, pruneExpanded, remapExpanded } from "../../src/views/treeState";
 
 function node(id: string, parentId: string | null, childIds: string[] = []): PageNode {
 	return {
@@ -120,5 +120,20 @@ describe("展开集合维护", () => {
 	it("剔除已不存在的 id", () => {
 		const pruned = pruneExpanded(new Set(["a", "gone"]), new Set(["a"]));
 		expect(Array.from(pruned)).toEqual(["a"]);
+	});
+
+	it("子树改名后展开状态跟着搬", () => {
+		const next = remapExpanded(new Set(["项目A", "项目A/设计", "首页.md"]), "项目A", "项目B");
+		expect(Array.from(next).sort()).toEqual(["首页.md", "项目B", "项目B/设计"].sort());
+	});
+
+	it("前缀相同但不在子树里的 id 不受影响", () => {
+		const next = remapExpanded(new Set(["项目A2", "项目A/设计"]), "项目A", "项目B");
+		expect(Array.from(next).sort()).toEqual(["项目B/设计", "项目A2"].sort());
+	});
+
+	it("搬到自己身上时原样返回", () => {
+		const ids = new Set(["a", "a/b"]);
+		expect(Array.from(remapExpanded(ids, "a", "a"))).toEqual(["a", "a/b"]);
 	});
 });

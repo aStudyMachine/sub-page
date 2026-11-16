@@ -7,6 +7,7 @@ import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, request
 import { createDragController } from "../components/dragController";
 import { childKey, isDescendantId } from "../core/pageOperationService";
 import { expandAncestors, flattenTree, navigate, pruneExpanded } from "./treeState";
+
 import { PageMetadata } from "../models/pageMetadata";
 import { hintSeen, markHintSeen } from "../hints";
 import { findConflictingPlugins } from "../utils/conflictingPlugins";
@@ -134,6 +135,11 @@ export class PageTreeView extends ItemView {
 	}
 
 	// ------------------------------------------------------------ 渲染
+
+	/** 设置里的展开状态被整体搬动过（改名 / 移动）后，视图收下新版而不是自己再算一遍。 */
+	applyExpanded(ids: ReadonlySet<string>): void {
+		this.expanded = new Set(ids);
+	}
 
 	render(): void {
 		if (!this.listEl) return;

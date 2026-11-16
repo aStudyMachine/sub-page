@@ -3,7 +3,7 @@ import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import { PageOrderStore } from "../repository/pageOrderStore";
 import { checkName } from "../utils/nameValidator";
-import { basename, dirname, isMarkdownFile, joinPath, normalizePath } from "../utils/pathUtils";
+import { basename, dirname, isMarkdownFile, joinPath, normalizePath, stripExtension } from "../utils/pathUtils";
 
 export type OpFailureReason = "invalid-name" | "name-conflict" | "not-found" | "not-allowed" | "io-error";
 
@@ -33,6 +33,11 @@ export interface OperationDeps {
 	getChildren(scope: PageId | null): PageNode[];
 	getPageRoot(): string;
 	refresh(): Promise<void>;
+	/**
+	 * 整棵子树的 id 变了（改名 / 移动）。展开状态是按 id 存进设置里的，
+	 * 不搬的话用户排好的展开层级会在下一次 pruneExpanded 里被当成脏数据丢掉。
+	 */
+	renameIds?(from: string, to: string): Promise<void>;
 }
 
 /**
@@ -53,10 +58,39 @@ export class PageOperationService {
 		return joinPath(this.deps.getPageRoot(), relative);
 	}
 
-	private async checkConflict(folderPath: string, title: string): Promise<boolean> {
-		const filePath = joinPath(folderPath, title + ".md");
-		const folder = joinPath(folderPath, title);
-		return (await this.adapter.exists(filePath)) || (await this.adapter.exists(folder));
+	/**
+	 * 同级重名检查。
+	 *
+	 * 不用 exists 逐条试，而是把父目录列出来比名字：改名时自己就是「已经存在的那个」，
+	 * 只有看见列表才分得清命中的是它自己还是同名邻居。在 Windows 上 exists("Abc.md") 对
+	 * 磁盘上的 abc.md 也返回真，靠路径精确比较绕不过去，只改大小写的改名会被误判成重名。
+	 */
+	private async checkConflict(
+		folderPath: string,
+		title: string,
+		ignore: readonly string[] = [],
+	): Promise<boolean> {
+		const listing = await this.adapter.listFolder(folderPath);
+		// 父目录还不存在（往空父页面里搬东西）时不可能有冲突。
+		if (!listing) return false;
+		const wanted = title.toLowerCase();
+		const self = new Set(ignore.map((path) => normalizePath(path)));
+		for (const entry of listing.folders) {
+			if (entry.name.toLowerCase() !== wanted) continue;
+			if (!self.has(normalizePath(entry.path))) return true;
+		}
+		for (const entry of listing.files) {
+			if (!isMarkdownFile(entry.name)) continue;
+			if (stripExtension(entry.name).toLowerCase() !== wanted) continue;
+			if (!self.has(normalizePath(entry.path))) return true;
+		}
+		return false;
+	}
+
+	/** 改名时要把自己的旧路径从冲突检查里排掉：叶子是文件，父页面是目录加同名文件。 */
+	private selfPaths(node: PageNode): string[] {
+		if (node.kind === "leaf") return node.filePath ? [node.filePath] : [];
+		return node.filePath ? [node.folderPath, node.filePath] : [node.folderPath];
 	}
 
 	private async assertCanHoldChildren(parentId: PageId | null): Promise<OpResult | null> {
@@ -114,7 +148,7 @@ export class PageOperationService {
 		if (!check.ok) return fail("invalid-name", describeNameProblem(check.problem, check.detail));
 
 		const parentFolder = node.parentId ? this.abs(node.parentId) : this.deps.getPageRoot();
-		if (await this.checkConflict(parentFolder, title)) {
+		if (await this.checkConflict(parentFolder, title, this.selfPaths(node))) {
 			return fail("name-conflict", `同级已经有一个「${title}」了`);
 		}
 
@@ -139,11 +173,12 @@ export class PageOperationService {
 			} catch (error) {
 				return fail("io-error", `重命名失败：${messageOf(error)}`);
 			}
-			await this.order.renameKey(scopeOfNode(node), basename(from), title);
-			await this.order.remapScopeTree(node.id, this.relativeId(to));
-			await this.deps.refresh();
-			return ok(this.relativeId(to) as PageId);
-		}
+		await this.order.renameKey(scopeOfNode(node), basename(from), title);
+		await this.order.remapScopeTree(node.id, this.relativeId(to));
+		await this.deps.renameIds?.(node.id, this.relativeId(to));
+		await this.deps.refresh();
+		return ok(this.relativeId(to) as PageId);
+	}
 
 		// 父页面：目录与同名笔记都要改。先改目录、再改笔记；第二步失败必须把目录改回去，
 		// 否则会留下「目录叫新名、笔记还叫旧名」的半个状态 —— 那棵树是自相矛盾的。
@@ -162,8 +197,9 @@ export class PageOperationService {
 			return fail("io-error", `重命名失败（已回滚）：${messageOf(error)}`);
 		}
 		await this.order.renameKey(scopeOfNode(node), basename(fromFolder), title);
-		// 子页面的排列顺序存在以旧 id 为作用域的那一段里，必须一起搬过去。
+		// 子页面的排列顺序与展开状态都挂在以旧 id 为作用域的地方，必须一起搬过去。
 		await this.order.remapScopeTree(node.id, this.relativeId(toFolder));
+		await this.deps.renameIds?.(node.id, this.relativeId(toFolder));
 		await this.deps.refresh();
 		return ok(this.relativeId(toFolder) as PageId);
 	}
@@ -213,8 +249,9 @@ export class PageOperationService {
 			return fail("io-error", `移动失败：${messageOf(error)}`);
 		}
 		await this.order.moveKey(oldScope, newScope, basename(from));
-		// 整棵子树的 id 都变了（它们是「绝对相对路径」），子页面的顺序作用域也得跟着搬。
+		// 整棵子树的 id 都变了（它们是「绝对相对路径」），子页面的顺序作用域与展开状态都得跟着搬。
 		await this.order.remapScopeTree(node.id, this.relativeId(to));
+		await this.deps.renameIds?.(node.id, this.relativeId(to));
 		await this.deps.refresh();
 		return ok(this.relativeId(to) as PageId);
 	}
