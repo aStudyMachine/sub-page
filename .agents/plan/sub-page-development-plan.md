@@ -167,6 +167,8 @@ Git：`main` 有初始提交，`dev` 分支存在，`git tag v0.0.1` 打在 M0 �
 
 **已定**：M0 只做本地 `git init`，**不建远端**。时机推到「准备跑 release workflow」或「需要备份/多机」时，再用 `gh repo create` 一次建好并 `git remote add`。届时要先确认仓库名与可见性（社区的 `release.yml` 与 `attest` 依赖 GitHub，所以最终一定要有远端，只是不阻塞 M0–M6）。
 
+**已建（2026-11-16）**：`aStudyMachine/sub-page`，公开，`main` 与 `dev` 均已推送。远端用 **SSH**（`git@github.com:aStudyMachine/sub-page.git`）—— `gh` 的 OAuth token 只有 `gist / read:org / repo` 三个 scope，缺 `workflow`，用 HTTPS 推带 `.github/workflows/` 的提交会被拒。要改回 HTTPS 需先 `gh auth refresh -s workflow`。
+
 ### M1 · 扫描与索引（0.0.2）
 
 任务：
