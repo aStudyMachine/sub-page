@@ -111,13 +111,18 @@ export class PageService {
 		return this.refreshing;
 	}
 
+	/** 最近一次整树扫描耗时；规模问题最先看这个数。 */
+	lastScanMs: number | null = null;
+
 	private async doRefresh(): Promise<void> {
 		const settings = this.deps.settings();
+		const started = Date.now();
 		const snapshot = await scan(this.deps.adapter, settings.pageRoot, {
 			order: this.order.current,
 			excludedFolders: settings.excludedFolders,
 			showEmptyFolders: settings.showEmptyFolders,
 		});
+		this.lastScanMs = Date.now() - started;
 		this.index.replace(snapshot);
 		const warnings = snapshot.warnings.filter((warning) => warning.kind !== "case-conflict");
 		if (warnings.length > 0) this.deps.onProblem?.(warnings[0].message);

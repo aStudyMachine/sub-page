@@ -26,6 +26,10 @@ export interface DiagnosticsInput {
 	orderProblem: string | null;
 	/** 顺序文件的作用域数量，用来判断顺序表是否膨胀。 */
 	expandedCount: number;
+	/** 已知会改写同一份结构的插件（Folder Note / Waypoint 之类）。 */
+	conflictingPlugins: string[];
+	/** 最近一次整树扫描耗时（毫秒），规模问题最先看这个数。 */
+	scanMs: number | null;
 }
 
 export function buildDiagnostics(input: DiagnosticsInput): string {
@@ -65,8 +69,19 @@ export function buildDiagnostics(input: DiagnosticsInput): string {
 		`- 作用域 ${orderScopes.length} 个，条目 ${orderEntries} 条`,
 		`- 读取状态：${input.orderProblem ?? "正常"}`,
 		"",
-		"### 扫描警告",
+		"### 性能",
+		`- 最近一次扫描：${input.scanMs === null ? "（未记录）" : `${input.scanMs} ms`}`,
+		"",
+		"### 插件冲突",
 	];
+	if (input.conflictingPlugins.length === 0) {
+		lines.push("- 未发现会改写同一份结构的插件");
+	} else {
+		for (const id of input.conflictingPlugins) {
+			lines.push(`- ${id}：与本插件都会把「同名笔记 + 目录」当成一层页面`);
+		}
+	}
+	lines.push("", "### 扫描警告");
 	if (snapshot.warnings.length === 0) {
 		lines.push("- 无");
 	} else {

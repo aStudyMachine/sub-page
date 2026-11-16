@@ -1,11 +1,11 @@
 import { App, Modal, Notice } from "obsidian";
 import type SubPagePlugin from "../main";
+import { PageNode } from "../models/pageNode";
 import { OrphanEntry } from "../core/structureIssues";
 import { ConfirmModal } from "./pageModals";
 
 /** 一次改这么多目录已经不是顺手清理了，先让用户看一眼。 */
 const BULK_CONFIRM_THRESHOLD = 50;
-import { PageNode } from "../models/pageNode";
 
 /**
  * 结构检查。只报「确实不对」的东西，并提供可撤销的修复动作。

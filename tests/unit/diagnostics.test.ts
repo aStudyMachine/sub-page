@@ -30,6 +30,8 @@ describe("诊断信息", () => {
 			order: { "": ["首页.md"] },
 			orderProblem: null,
 			expandedCount: 3,
+			conflictingPlugins: [],
+			scanMs: 12,
 		});
 		expect(text).toContain("父页面 2 / 叶子页面 6");
 		expect(text).toContain("分组目录：3");
@@ -57,10 +59,15 @@ describe("诊断信息", () => {
 			order: {},
 			orderProblem: "顺序文件不是合法 JSON，已退回按名称排序",
 			expandedCount: 0,
+			conflictingPlugins: ["obsidian-folder-note"],
+			scanMs: null,
 		});
 		expect(text).toContain("读取状态：顺序文件不是合法 JSON");
 		// 页面根可以不写进报障信息，但「是不是库根」要能看出来。
 		expect(text).toContain("- 页面根：自定义");
 		expect(text).toContain("- 排除目录：（无）");
+		// 冲突插件要让报障的人自己看得到，不用我们再去问一遍装了哪些插件。
+		expect(text).toContain("obsidian-folder-note");
+		expect(text).toContain("- 最近一次扫描：（未记录）");
 	});
 });

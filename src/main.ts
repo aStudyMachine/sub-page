@@ -7,6 +7,7 @@ import { Translator, resolveLanguage } from "./i18n";
 import { PAGE_TREE_VIEW_TYPE, PageTreeView } from "./views/pageTreeView";
 import { registerSubPageBlockProcessor } from "./views/subPageRenderer";
 import { registerCommands } from "./commands";
+import { findConflictingPlugins } from "./utils/conflictingPlugins";
 
 /**
  * Sub Page —— 在现有 vault 之上的一棵页面树：
@@ -220,6 +221,8 @@ export default class SubPagePlugin extends Plugin {
 			order: this.service.order.current,
 			orderProblem: this.service.order.problem,
 			expandedCount: this.settings.expandedIds.length,
+			conflictingPlugins: findConflictingPlugins(this.app),
+			scanMs: this.service.lastScanMs,
 		});
 		try {
 			await navigator.clipboard.writeText(text);
