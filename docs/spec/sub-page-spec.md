@@ -1,7 +1,7 @@
 # Spec · Sub Page（Obsidian 子页面插件）
 
 - 状态：待实现
-- 依据：`Obsidian 子页面插件技术设计方案.md`、`.agents/plan/sub-page-development-plan.md`、`GLOSSARY.md`、`docs/adr/0001–0004`
+- 依据：`.agents/plan/sub-page-development-plan.md`、`GLOSSARY.md`、`docs/adr/0001–0005`
 - 术语一律以 `GLOSSARY.md` 为准：页面 / 父页面 / 叶子页面 / 分组目录 / 忽略目录 / 配对 / 页面根 / 页面 ID / 作用域 / 顺序文件 / 结构检查 / 页面服务 / 快照
 
 ## Problem Statement

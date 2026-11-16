@@ -1,7 +1,9 @@
 # Obsidian 子页面插件 · 详细开发计划
 
-> 依据：`Obsidian 子页面插件技术设计方案.md`（v1.0）+ `clean-mermaid` 的工程实践与可复用代码 + 本机 1.15.1 实测结论。
-> 本文是**施工图**：每个里程碑都有可执行的验收命令。设计文档仍然是模型与 API 的权威源，本文只修正它已被实测推翻的部分。
+> 依据：早期技术设计方案 v1.0（未入库，见 `git show 612a6ae`）+ `clean-mermaid` 的工程实践与可复用代码 + 本机 1.15.1 实测结论。
+> 本文是**施工图**：每个里程碑都有可执行的验收命令。当前权威源是 `docs/spec/sub-page-spec.md`（行为）与 `docs/adr/`（架构）；早期方案里被实测推翻的 6 处修正见下一节。
+>
+> 早期方案已退役：它假设页面必须「目录 + 同名笔记」成对出现（ADR-0001 已否决），也没有顺序文件与三类节点的概念。留档只为追溯，不要照它实现。
 
 ---
 
@@ -142,6 +144,7 @@ test-vault/                      # 真实观察用库（gitignore，Obsidian 手
    - `git init -b main`
    - 先落 `.gitignore`（从 clean-mermaid 搬，追加 `test-vault/`、`.subpage-order.json`、`main.js`、`*.js.map`、`data.json`）与 `.gitattributes`，**先提交规则再提交内容**
    - 首次提交：`chore: 初始化 Sub Page 插件仓库`（含设计文档、GLOSSARY、ADR、计划）
+   - 设计文档已于 2026-11-16 退役删除。需要追溯原文：`git show 612a6ae:"Obsidian 子页面插件技术设计方案.md"`
    - 建 `dev` 分支并从 `main` 切出，日常在 `dev` 或 `feature/*` 上干活，里程碑合并回 `main`
    - 远端仓库的创建与是否公开，见下方「待确认」
 1. `npm init`，装 `obsidian@^1.13`（devDep 用 1.13 的 d.ts，运行时要求 1.15）、esbuild ^0.25、typescript ^5.7、vitest ^3.2、@types/node ^22。
