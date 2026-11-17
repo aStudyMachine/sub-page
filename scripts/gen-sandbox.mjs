@@ -78,5 +78,5 @@ console.log(`  清掉 ${removed} 个旧条目，写入 ${Object.keys(files).leng
 console.log(
 	pluginReady
 		? "  插件已在位；直接打开这个目录作为库。"
-		: "  插件尚未部署：先跑 npm run deploy -- sandbox --no-check",
+		: "  插件尚未部署：先跑 npm run deploy -- test-vault/sandbox --no-check",
 );

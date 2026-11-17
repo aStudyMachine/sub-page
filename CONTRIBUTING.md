@@ -48,7 +48,7 @@ npm run deploy -- <库名> --restart  # 拷完重启 Obsidian（仅 Windows）
 
 ```bash
 npm run sandbox:reset                 # 把样例笔记恢复原状（跑过一次验收之后必须执行）
-npm run deploy -- sandbox --no-check  # 拷三件套进 test-vault/sandbox/.obsidian
+npm run deploy -- test-vault/sandbox --no-check  # 拷三件套进 .obsidian/plugins/sub-page
 ```
 
 在 Obsidian 里 `打开文件夹作为库` 选择 `test-vault/sandbox`。若弹出「是否信任作者并启用插件」，选信任。
