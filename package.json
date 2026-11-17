@@ -11,7 +11,8 @@
     "perf": "vitest run tests/perf",
     "deploy": "node scripts/deploy.mjs",
     "bump": "node scripts/bump-version.mjs",
-    "gen-vault": "node scripts/gen-vault.mjs"
+    "gen-vault": "node scripts/gen-vault.mjs",
+    "sandbox:reset": "node scripts/gen-sandbox.mjs"
   },
   "keywords": [
     "obsidian",
