@@ -1,4 +1,4 @@
-import { App, Notice, Platform, Plugin, TFile, apiVersion, getLanguage } from "obsidian";
+import { App, Notice, Platform, Plugin, TFile, apiVersion, getLanguage, setTooltip } from "obsidian";
 import { ObsidianVaultAdapter } from "./adapters/obsidianVaultAdapter";
 import { PageService } from "./core/pageService";
 import { SubPageSettingTab } from "./settings";
@@ -21,6 +21,8 @@ export default class SubPagePlugin extends Plugin {
 	/** 索引与写操作的门面；onload 里创建，视图与块都只依赖它。 */
 	service!: PageService;
 	private pageRootPromise: Promise<void> | null = null;
+	/** 功能区按钮。语言切换后要改它的提示文字，所以留着引用。 */
+	private ribbonEl: HTMLElement | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -45,6 +47,8 @@ export default class SubPagePlugin extends Plugin {
 		}
 
 		this.addSettingTab(new SubPageSettingTab(this.app, this));
+		// 只有命令入口时，装完插件界面上什么都不会变，用户找不到树。功能区给一个显式入口。
+		this.ribbonEl = this.addRibbonIcon("list-tree", this.t("view.tree.name"), () => void this.activateTree());
 		registerCommands(this);
 
 		// 界面语言可能跟随 Obsidian 切换，命令面板的标签要跟着重建。
@@ -126,6 +130,8 @@ export default class SubPagePlugin extends Plugin {
 	/** 语言切换后重建命令与设置面板文案。 */
 	refreshLanguage(): void {
 		this.translator.setLanguage(this.language);
+		// 命令是整组重建的，功能区按钮只在 onload 建一次，提示文字得手动跟。
+		if (this.ribbonEl) setTooltip(this.ribbonEl, this.t("view.tree.name"), { placement: "right" });
 		registerCommands(this);
 	}
 

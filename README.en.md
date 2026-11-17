@@ -15,7 +15,7 @@ With plain folders, "where is the entry point for this folder" needs a Folder No
 ## Usage
 
 1. Point "Page root" in settings at the folder holding your pages (defaults to the whole vault).
-2. Run **Sub Page: Open sub page panel**; the tree appears in the right sidebar.
+2. Click the **Sub Page** icon in the left ribbon, or run **Sub Page: Open sub page panel**; the tree appears in the right sidebar.
 3. Insert this anywhere in a note:
 
    ````markdown
