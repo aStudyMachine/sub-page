@@ -9,6 +9,8 @@ import { remapExpanded } from "./views/treeState";
 import { registerSubPageBlockProcessor } from "./views/subPageRenderer";
 import { registerCommands } from "./commands";
 import { findConflictingPlugins } from "./utils/conflictingPlugins";
+import { ORDER_FILE_NAME } from "./repository/pageOrderStore";
+import { joinPath } from "./utils/pathUtils";
 
 /**
  * Sub Page —— 在现有 vault 之上的一棵页面树：
@@ -29,6 +31,10 @@ export default class SubPagePlugin extends Plugin {
 
 		this.service = new PageService({
 			adapter: new ObsidianVaultAdapter(this.app),
+			orderPath: joinPath(
+				this.manifest.dir ?? joinPath(this.app.vault.configDir, "plugins", this.manifest.id),
+				ORDER_FILE_NAME,
+			),
 			settings: () => this.settings,
 			onChange: () => this.refreshViews(),
 			onIdsRenamed: (from, to) => this.remapExpandedIds(from, to),
@@ -107,7 +113,7 @@ export default class SubPagePlugin extends Plugin {
 	}
 
 	async refreshIndex(): Promise<void> {
-		await this.service.refresh();
+		await this.service.rebuild();
 	}
 
 	// ------------------------------------------------------------ 文案

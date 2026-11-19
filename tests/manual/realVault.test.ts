@@ -67,6 +67,9 @@ class ReadOnlyFsAdapter implements VaultAdapter {
 	async writeText(): Promise<void> {
 		throw new Error("只读冒烟不许写库");
 	}
+	async writeVerifiedText(): Promise<void> {
+		throw new Error("只读冒烟不许写库");
+	}
 	async createFolder(): Promise<void> {
 		throw new Error("只读冒烟不许写库");
 	}

@@ -55,16 +55,20 @@ Sub Page neither takes over nor hides the native file explorer. The same folders
 
 ## Ordering
 
-Drag-and-drop order is stored in `.subpage-order.json` at the page root — one file for every level:
+Manual order is stored in `order.json` in the plugin folder (normally `.obsidian/plugins/sub-page/order.json`). The `roots` object holds a separate entry for each page root. Its empty key represents the entire vault.
 
 ```json
 {
-  "": ["Home", "Conventions", "Java"],
-  "Java": ["jvm", "concurrency"]
+  "roots": {
+    "": {
+      "": ["Home", "Conventions", "Java"],
+      "Java": ["jvm", "concurrency"]
+    }
+  }
 }
 ```
 
-Keys are parent page IDs (`""` for the root); values are arrays of child **names**. Storing names rather than indices means a rename replaces one element, a move shifts one array entry, and a single drag writes one file. Unlisted children fall back to natural name order.
+Each entry maps parent page IDs to child names. The inner empty key represents top-level pages. Unlisted children use natural name order. The first time a page root is opened after upgrading, the plugin imports its legacy `.subpage-order.json` and keeps the original as a backup. Include `order.json` when syncing the plugin configuration across devices.
 
 ## Installation
 

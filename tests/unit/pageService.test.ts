@@ -1,3 +1,4 @@
+import { ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
 import { describe, expect, it, vi } from "vitest";
 import { PageService } from "../../src/core/pageService";
 import { PageId } from "../../src/models/pageId";
@@ -11,6 +12,7 @@ function makeService(vault: FakeVault, overrides: Partial<typeof DEFAULT_SETTING
 	const problems: string[] = [];
 	const service = new PageService({
 		adapter: vault,
+		orderPath: ORDER_FILE_NAME,
 		settings: () => ({ ...DEFAULT_SETTINGS, ...overrides }),
 		onChange: (reason) => changes.push(reason),
 		onProblem: (message) => problems.push(message),
@@ -135,6 +137,7 @@ describe("页面根切换", () => {
 		const settings = { ...DEFAULT_SETTINGS };
 		const service = new PageService({
 			adapter: vault,
+			orderPath: ORDER_FILE_NAME,
 			settings: () => settings,
 			onChange: () => undefined,
 			debounceMs: 5,

@@ -4,7 +4,7 @@ import { PageOperationService, renderTemplate } from "../../src/core/pageOperati
 import type SubPagePlugin from "../../src/main";
 import { PageId } from "../../src/models/pageId";
 import { PageIndex } from "../../src/repository/pageIndex";
-import { PageOrderStore } from "../../src/repository/pageOrderStore";
+import { ORDER_FILE_NAME, PageOrderStore } from "../../src/repository/pageOrderStore";
 import { DEFAULT_MAX_DEPTH, scan } from "../../src/repository/pageScanner";
 import { FakeVault, sampleVault } from "../fixtures/fakeVault";
 
@@ -56,7 +56,7 @@ interface Harness {
 
 async function harness(vault: FakeVault, pageRoot = "", excludedFolders: string[] = []): Promise<Harness> {
 	const index = new PageIndex();
-	const order = new PageOrderStore(vault, pageRoot);
+	const order = new PageOrderStore(vault, pageRoot, ORDER_FILE_NAME);
 	await order.load();
 	const refresh = async () => {
 		index.replace(await scan(vault, pageRoot, { order: order.current, excludedFolders }));

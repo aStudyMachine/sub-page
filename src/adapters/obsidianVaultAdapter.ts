@@ -51,12 +51,33 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	async readText(path: string): Promise<string | null> {
 		const normalized = normalizePath(path);
 		const adapter = this.app.vault.adapter;
-		// 顺序文件以点开头，存在于磁盘上但不会进入 Vault 的文件索引。
+		// 插件配置目录和点号开头的旧顺序文件都在 Vault 文件索引之外。
 		return (await adapter.exists(normalized)) ? adapter.read(normalized) : null;
 	}
 
 	async writeText(path: string, content: string): Promise<void> {
 		await this.app.vault.adapter.write(normalizePath(path), content);
+	}
+
+	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		const target = normalizePath(path);
+		const staged = `${target}.migration-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+		try {
+			await adapter.write(staged, content);
+			if (await adapter.read(staged) !== content) throw new Error("迁移文件校验失败");
+			if (previous === null) {
+				await adapter.rename(staged, target);
+			} else {
+				await adapter.process(target, (current) => {
+					if (current !== previous) throw new Error("顺序文件在迁移期间已变更");
+					return content;
+				});
+			}
+			if (await adapter.read(target) !== content) throw new Error("迁移后的顺序文件校验失败");
+		} finally {
+			await adapter.remove(staged).catch(() => undefined);
+		}
 	}
 
 	async createFolder(path: string): Promise<void> {
