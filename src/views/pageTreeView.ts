@@ -13,6 +13,7 @@ import { hintSeen, markHintSeen } from "../hints";
 import { findConflictingPlugins } from "../utils/conflictingPlugins";
 
 export const PAGE_TREE_VIEW_TYPE = "sub-page-tree";
+const RENAME_DOUBLE_CLICK_MS = 250;
 
 /**
  * 侧栏。只做三件事：读 plugin.service 的索引 → 构建行 → 把交互转交给门面。
@@ -216,8 +217,16 @@ export class PageTreeView extends ItemView {
 			metadata: this.metadataCache.get(node.id) ?? node.metadata,
 		});
 		this.listEl.appendChild(row);
-		row.addEventListener("click", (event) => this.onRowClick(event, node));
+		// 保留宿主对双击位置的判断，只收紧触发改名的时间窗口。
+		let firstClickAt: number | null = null;
+		row.addEventListener("click", (event) => {
+			if (event.detail === 1) firstClickAt = event.timeStamp;
+			this.onRowClick(event, node);
+		});
 		row.addEventListener("dblclick", (event) => {
+			const elapsed = firstClickAt === null ? Infinity : event.timeStamp - firstClickAt;
+			firstClickAt = null;
+			if (elapsed > RENAME_DOUBLE_CLICK_MS) return;
 			event.preventDefault();
 			this.openRename(node);
 		});
