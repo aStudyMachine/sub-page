@@ -5,7 +5,7 @@ import type SubPagePlugin from "../../src/main";
 import { PageId } from "../../src/models/pageId";
 import { PageIndex } from "../../src/repository/pageIndex";
 import { PageOrderStore } from "../../src/repository/pageOrderStore";
-import { scan } from "../../src/repository/pageScanner";
+import { DEFAULT_MAX_DEPTH, scan } from "../../src/repository/pageScanner";
 import { FakeVault, sampleVault } from "../fixtures/fakeVault";
 
 const menu = vi.hoisted(() => ({
@@ -125,6 +125,7 @@ describe("新建页面", () => {
 		expect(result).toEqual({ ok: true, value: "首页/子.md" });
 		expect(h.index.getNode(id("首页/子.md"))?.parentId).toBe("首页");
 		expect(h.vault.content("首页/首页.md")).toBeDefined();
+		expect(h.vault.folderPaths()).not.toContain("首页/子");
 		expect(h.vault.filePaths()).not.toContain("子.md");
 		expect(h.order.getKeys("")).toEqual(["笔记规范.md", "首页"]);
 	});
@@ -343,9 +344,52 @@ describe("移动", () => {
 		expect(await h.ops.movePage(id("重名.md"), id("Java"))).toMatchObject({ ok: false, reason: "name-conflict" });
 	});
 
-	it("移到叶子页面下被挡住", async () => {
+	it("把笔记拖入叶子页面时才为叶子配对目录", async () => {
 		const h = await harness(sampleVault());
-		expect(await h.ops.movePage(id("笔记规范.md"), id("首页.md"))).toMatchObject({ ok: false, reason: "not-allowed" });
+		await h.ops.createPage(id("项目A"), "接收页");
+		expect(h.vault.folderPaths()).not.toContain("项目A/接收页");
+		await h.ops.reorderScope(id("项目A"), ["接收页.md", "需求.md"]);
+		const result = await h.ops.movePage(id("笔记规范.md"), id("项目A/接收页.md"));
+		expect(result).toEqual({ ok: true, value: "项目A/接收页/笔记规范.md" });
+		expect(h.index.getNode(id("项目A/接收页/笔记规范.md"))?.parentId).toBe("项目A/接收页");
+		expect(h.vault.filePaths()).toContain("项目A/接收页/接收页.md");
+		expect(h.order.getKeys("项目A")).toEqual(["接收页", "需求.md"]);
+		expect(h.order.getKeys("项目A/接收页")).toEqual(["笔记规范.md"]);
+	});
+
+	it("移入叶子页面的整棵子树保留手动顺序", async () => {
+		const h = await harness(sampleVault());
+		await h.ops.reorderScope(id("项目A"), ["需求.md", "设计"]);
+		const result = await h.ops.movePage(id("项目A"), id("首页.md"));
+		expect(result).toEqual({ ok: true, value: "首页/项目A" });
+		expect(h.vault.filePaths()).toContain("首页/项目A/设计/设计.md");
+		expect(h.order.getKeys("首页/项目A")).toEqual(["需求.md", "设计"]);
+		expect(h.order.getKeys("项目A")).toEqual([]);
+	});
+
+	it("拖入叶子页面失败时恢复原笔记，不留下配对目录", async () => {
+		const vault = sampleVault();
+		const h = await harness(vault);
+		const renameFile = vault.renameFile.bind(vault);
+		vi.spyOn(vault, "renameFile").mockImplementation(async (from, to) => {
+			if (from === "笔记规范.md") throw new Error("移动失败");
+			await renameFile(from, to);
+		});
+		expect(await h.ops.movePage(id("笔记规范.md"), id("首页.md"))).toMatchObject({
+			ok: false, reason: "io-error",
+		});
+		expect(vault.filePaths()).toEqual(expect.arrayContaining(["首页.md", "笔记规范.md"]));
+		expect(vault.folderPaths()).not.toContain("首页");
+	});
+
+	it("配对后放不下整棵子树时保留源和目标", async () => {
+		const parent = Array.from({ length: DEFAULT_MAX_DEPTH - 2 }, () => "层").join("/");
+		const target = `${parent}/接收页.md`;
+		const h = await harness(new FakeVault({ [target]: "", "源/下层/笔记.md": "" }));
+		expect(await h.ops.movePage(id("源"), id(target))).toMatchObject({ ok: false, reason: "not-allowed" });
+		expect(h.vault.filePaths()).toContain(target);
+		expect(h.vault.filePaths()).toContain("源/下层/笔记.md");
+		expect(h.vault.folderPaths()).not.toContain(`${parent}/接收页`);
 	});
 
 	it("移动后顺序跨作用域搬运", async () => {

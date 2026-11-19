@@ -355,11 +355,19 @@ export class PageTreeView extends ItemView {
 	// ------------------------------------------------------------ 拖拽落点
 
 	private moveAsChild(draggedId: string, targetId: string | null): void {
-		// 落到叶子页面上没有意义（叶子没有目录，装不下子页面），按「成为它的同级」处理。
-		const target = targetId ? this.service.getNode(targetId as PageId) : undefined;
-		const parentId = target && target.kind === "leaf" ? target.parentId : (targetId as PageId | null);
-		void this.service.operations.movePage(draggedId as PageId, parentId).then((result) => {
-			if (!result.ok) new Notice(result.message);
+		void this.service.operations.movePage(draggedId as PageId, targetId as PageId | null).then((result) => {
+			if (!result.ok) {
+				new Notice(result.message);
+				return;
+			}
+			if (result.warning) new Notice(result.warning);
+			if (!targetId) return;
+			const ancestors = this.service.getAncestors(result.value).map((node) => node.id);
+			const expanded = expandAncestors(this.expanded, ancestors);
+			if (expanded.size !== this.expanded.size) {
+				this.expanded = expanded;
+				this.render();
+			}
 		});
 	}
 

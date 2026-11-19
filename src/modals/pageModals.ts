@@ -130,7 +130,7 @@ export interface CreateModalOptions {
 }
 
 export class CreatePageModal extends InputModal {
-	private withFolder = true;
+	private withFolder: boolean;
 
 	constructor(
 		app: App,
@@ -138,6 +138,7 @@ export class CreatePageModal extends InputModal {
 		private readonly options: CreateModalOptions,
 	) {
 		super(app, plugin);
+		this.withFolder = options.parentId === null;
 	}
 
 	get titleText(): string {
@@ -196,7 +197,7 @@ export class CreatePageModal extends InputModal {
 			.setName(this.plugin.t("settings.createWithFolder.name"))
 			.setDesc(this.plugin.t("settings.createWithFolder.desc"))
 			.addToggle((toggle) =>
-				toggle.setValue(true).onChange((value) => {
+				toggle.setValue(this.withFolder).onChange((value) => {
 					this.withFolder = value;
 					this.revalidateNow();
 				}),
@@ -301,6 +302,7 @@ export class MovePageModal extends InputModal {
 			return;
 		}
 		new Notice(this.plugin.t("notice.moved", { target: value.trim() || "/" }));
+		if (result.warning) new Notice(result.warning);
 	}
 }
 

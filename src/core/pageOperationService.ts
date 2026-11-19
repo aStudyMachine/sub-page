@@ -96,14 +96,6 @@ export class PageOperationService {
 		return node.filePath ? [node.folderPath, node.filePath] : [node.folderPath];
 	}
 
-	private async assertCanHoldChildren(parentId: PageId | null): Promise<OpResult | null> {
-		if (!parentId) return null;
-		const parent = this.deps.getNode(parentId);
-		if (!parent) return fail("not-found", "父页面不在索引里，请先重建索引");
-		if (parent.kind === "leaf") return fail("not-allowed", "叶子页面还不能放子页面，请先为它创建同名目录");
-		return null;
-	}
-
 	// ---------------------------------------------------------------- 新建
 
 	async createPage(parentId: PageId | null, rawTitle: string, options: CreateOptions = {}): Promise<OpResult<PageId>> {
@@ -241,46 +233,60 @@ export class PageOperationService {
 		}
 		if (normalizePath(node.parentId ?? "") === normalizePath(targetParentId ?? "")) return ok(id);
 
-		const targetProblem = await this.assertCanHoldChildren(targetParentId);
-		if (targetProblem && !targetProblem.ok) return targetProblem;
+		const parent = targetParentId ? this.deps.getNode(targetParentId) : undefined;
+		if (targetParentId && !parent) return fail("not-found", "父页面不在索引里，请先重建索引");
+
+		if (parent?.kind === "leaf") {
+			if (parent.title.toLowerCase() === node.title.toLowerCase()) {
+				return fail("name-conflict", `目标位置已经有「${node.title}」了`);
+			}
+			if (this.exceedsFolderDepth(node, parent.depth + 1)) {
+				return fail("not-allowed", "移动后子页面目录将超出页面树扫描范围");
+			}
+			return this.pairLeaf(
+				parent,
+				(folder) => this.moveIntoFolder(node, folder),
+				(resultId, parentId) => this.recordMove(node, parentId, resultId),
+			);
+		}
 
 		const targetFolder = targetParentId ? this.abs(targetParentId) : this.deps.getPageRoot();
 		if (await this.checkConflict(targetFolder, node.title)) {
 			return fail("name-conflict", `目标位置已经有「${node.title}」了`);
 		}
 
-		const oldScope = scopeOfNode(node);
-		const newScope = targetParentId ?? "";
-
-		if (node.kind === "leaf") {
-			const from = node.filePath!;
-			const to = joinPath(targetFolder, basename(from));
-			try {
-				// 目标目录可能还不存在（往一个还没有子页面的父页面里放东西）。
-				await this.adapter.createFolder(targetFolder);
-				await this.adapter.renameFile(from, to);
-			} catch (error) {
-				return fail("io-error", `移动失败：${messageOf(error)}`);
-			}
-			await this.order.moveKey(oldScope, newScope, basename(from));
-			await this.deps.refresh();
-			return ok(this.relativeId(to) as PageId);
-		}
-
-		const from = node.folderPath;
-		const to = joinPath(targetFolder, node.title);
+		let resultId: PageId;
 		try {
 			await this.adapter.createFolder(targetFolder);
-			await this.adapter.renameFolder(from, to);
+			resultId = await this.moveIntoFolder(node, targetFolder);
 		} catch (error) {
 			return fail("io-error", `移动失败：${messageOf(error)}`);
 		}
-		await this.order.moveKey(oldScope, newScope, basename(from));
-		// 整棵子树的 id 都变了（它们是「绝对相对路径」），子页面的顺序作用域与展开状态都得跟着搬。
-		await this.order.remapScopeTree(node.id, this.relativeId(to));
-		await this.deps.renameIds?.(node.id, this.relativeId(to));
+		await this.recordMove(node, targetParentId ?? "", resultId);
 		await this.deps.refresh();
-		return ok(this.relativeId(to) as PageId);
+		return ok(resultId);
+	}
+
+	private exceedsFolderDepth(node: PageNode, targetDepth: number): boolean {
+		if (node.kind === "leaf") return false;
+		return targetDepth > DEFAULT_MAX_DEPTH ||
+			this.deps.getChildren(node.id).some((child) => this.exceedsFolderDepth(child, targetDepth + 1));
+	}
+
+	private async moveIntoFolder(node: PageNode, folder: string): Promise<PageId> {
+		const from = node.kind === "leaf" ? node.filePath! : node.folderPath;
+		const to = joinPath(folder, basename(from));
+		if (node.kind === "leaf") await this.adapter.renameFile(from, to);
+		else await this.adapter.renameFolder(from, to);
+		return this.relativeId(to) as PageId;
+	}
+
+	private async recordMove(node: PageNode, scope: string, resultId: PageId): Promise<void> {
+		await this.order.moveKey(scopeOfNode(node), scope, childKey(node));
+		if (node.kind === "leaf") return;
+		// 子树 ID 变更后，顺序作用域与展开状态需要跟着搬。
+		await this.order.remapScopeTree(node.id, resultId);
+		await this.deps.renameIds?.(node.id, resultId);
 	}
 
 	// ---------------------------------------------------------------- 删除
@@ -339,10 +345,11 @@ export class PageOperationService {
 		return ok(this.relativeId(node.folderPath) as PageId);
 	}
 
-	/** 配对和首次新建子页面共享同一次配对，失败时保留原笔记。 */
+	/** 首次添加子页面时一并配对，写入或移动失败时恢复原笔记。 */
 	private async pairLeaf(
 		node: PageNode,
-		createChild?: (folder: string) => Promise<PageId>,
+		addChild?: (folder: string) => Promise<PageId>,
+		recordChildMove?: (resultId: PageId, parentId: PageId) => Promise<void>,
 	): Promise<OpResult<PageId>> {
 		const from = node.filePath!;
 		const folder = joinPath(dirname(from), node.title);
@@ -358,11 +365,12 @@ export class PageOperationService {
 			await this.adapter.createFolder(folder);
 
 			let paired = false;
-			let resultId = this.relativeId(folder) as PageId;
+			const parentId = this.relativeId(folder) as PageId;
+			let resultId = parentId;
 			try {
 				await this.adapter.renameFile(from, to);
 				paired = true;
-				if (createChild) resultId = await createChild(folder);
+				if (addChild) resultId = await addChild(folder);
 			} catch (error) {
 				try {
 					if (paired) await this.adapter.renameFile(to, from);
@@ -380,6 +388,11 @@ export class PageOperationService {
 				await this.order.renameKey(scopeOfNode(node), basename(from), basename(folder));
 			} catch (error) {
 				warning = `页面已配对，手动顺序未写入：${messageOf(error)}`;
+			}
+			try {
+				await recordChildMove?.(resultId, parentId);
+			} catch (error) {
+				warning = `页面已移动，顺序或展开状态未能保存：${messageOf(error)}`;
 			}
 			await this.deps.refresh();
 			return warning ? { ok: true, value: resultId, warning } : ok(resultId);
