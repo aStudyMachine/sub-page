@@ -44,7 +44,7 @@ export function registerCommands(plugin: SubPagePlugin): void {
 	add("new-root", plugin.t("cmd.newRootPage"), () => openCreate(plugin, null));
 	add("new-child", plugin.t("cmd.newChildPage"), () => {
 		const current = plugin.currentPage();
-		openCreate(plugin, current ? (current.kind === "leaf" ? current.parentId : current.id) : null);
+		openCreate(plugin, current?.id ?? null);
 	});
 	// 从别处跳回来时不该自己在一棵树里找：先把面板开起来，再展开祖先链并聚焦到当前行。
 	add("reveal-current", plugin.t("cmd.revealCurrent"), () => {

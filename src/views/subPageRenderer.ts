@@ -85,6 +85,7 @@ function renderBlock(
 				const template = await plugin.loadTemplate();
 				const result = await plugin.service.operations.pairPage(node.id, template);
 				if (!result.ok) new Notice(result.message);
+				else if (result.warning) new Notice(result.warning);
 			});
 			return;
 		}

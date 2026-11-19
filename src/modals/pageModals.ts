@@ -151,6 +151,10 @@ export class CreatePageModal extends InputModal {
 	}
 
 	validate(value: string): string | null {
+		const parent = this.plugin.service.getNode(this.options.parentId);
+		if (parent?.kind === "leaf" && value.trim().toLowerCase() === parent.title.toLowerCase()) {
+			return this.plugin.t("error.nameConflict");
+		}
 		const siblings = this.plugin.service.getChildren(this.options.parentId);
 		const problem = nameProblem(this.plugin, siblings, value);
 		if (problem) return problem;
@@ -175,10 +179,18 @@ export class CreatePageModal extends InputModal {
 			return;
 		}
 		new Notice(this.plugin.t("notice.created", { title: value }));
+		if (result.warning) new Notice(result.warning);
 		this.options.onCreated(result.value);
 	}
 
 	onOpen(): void {
+		const parent = this.plugin.service.getNode(this.options.parentId);
+		if (parent?.kind === "leaf") {
+			this.contentEl.createDiv({
+				cls: "setting-item-description",
+				text: this.plugin.t("modal.create.pairParent", { title: parent.title }),
+			});
+		}
 		super.onOpen();
 		new Setting(this.contentEl)
 			.setName(this.plugin.t("settings.createWithFolder.name"))

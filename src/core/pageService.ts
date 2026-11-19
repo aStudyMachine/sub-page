@@ -57,6 +57,7 @@ export class PageService {
 			getNode: (id) => this.index.getNode(id),
 			getChildren: (scope) => this.index.getChildren(scope),
 				getPageRoot: () => this.deps.settings().pageRoot,
+				getExcludedFolders: () => this.deps.settings().excludedFolders,
 				refresh: () => this.refresh(),
 				renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
 		});

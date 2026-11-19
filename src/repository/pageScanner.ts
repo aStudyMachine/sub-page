@@ -19,7 +19,11 @@ export interface ScanOptions {
 	showEmptyFolders?: boolean;
 }
 
-const DEFAULT_MAX_DEPTH = 32;
+export const DEFAULT_MAX_DEPTH = 32;
+
+export function isExcludedFolder(name: string, excluded: ReadonlySet<string>): boolean {
+	return name.startsWith(".") || excluded.has(name.toLowerCase());
+}
 
 interface TempNode {
 	id: PageId;
@@ -49,11 +53,6 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 	const relOf = (absolutePath: string): string => {
 		if (root === "") return normalizePath(absolutePath);
 		return normalizePath(absolutePath).slice(root.length + 1);
-	};
-
-	const isExcludedFolder = (name: string): boolean => {
-		if (name.startsWith(".")) return true;
-		return excluded.has(name.toLowerCase());
 	};
 
 	const visitFolder = async (folderPath: string, depth: number): Promise<{ self: TempNode | null; children: TempNode[] }> => {
@@ -92,7 +91,7 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 		}
 
 		for (const folder of listing.folders) {
-			if (isExcludedFolder(folder.name)) continue;
+			if (isExcludedFolder(folder.name, excluded)) continue;
 			if (depth + 1 > maxDepth) {
 				warnings.push({ kind: "depth-limit", path: folder.path, message: `层级超过 ${maxDepth} 层，以下内容未索引` });
 				continue;

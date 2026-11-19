@@ -54,6 +54,7 @@ const ZH: Record<string, string> = {
 	"action.search": "搜索页面…",
 
 	"modal.create.title": "新建页面",
+	"modal.create.pairParent": "新建后，「{title}」和子页面将放在「{title}」目录中。",
 	"modal.create.placeholder": "页面名称",
 	"modal.rename.title": "重命名页面",
 	"modal.move.title": "移动页面",
@@ -184,6 +185,7 @@ const EN: Record<string, string> = {
 	"action.search": "Search pages…",
 
 	"modal.create.title": "New page",
+	"modal.create.pairParent": "The new folder “{title}” will contain both the original page and the child page.",
 	"modal.create.placeholder": "Page name",
 	"modal.rename.title": "Rename page",
 	"modal.move.title": "Move page",
