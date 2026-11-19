@@ -194,7 +194,7 @@ export default class SubPagePlugin extends Plugin {
 			await this.app.workspace.revealLeaf(existing[0]);
 			return;
 		}
-		const leaf = this.app.workspace.getRightLeaf(false);
+		const leaf = this.app.workspace.getLeftLeaf(false);
 		if (!leaf) {
 			new Notice(this.t("notice.rootMissing", { path: this.settings.pageRoot }));
 			return;

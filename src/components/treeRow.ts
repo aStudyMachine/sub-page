@@ -20,24 +20,17 @@ export function buildRow(options: RowOptions): HTMLElement {
 	const row = createDiv({ cls: "sp-row" });
 	row.setAttribute("role", "treeitem");
 	row.setAttribute("data-id", node.id);
-	row.setAttribute("aria-level", String(node.depth + 1));
+	row.setAttribute("aria-level", String(node.depth));
 	row.setAttribute("tabindex", "-1");
 	// HTML5 拖放的前提：元素本身可拖。缺了这一条 dragstart 永远不会触发。
 	// 移动端用手势排序，不要留下可拖状态。
 	if (Platform.isDesktopApp) row.setAttribute("draggable", "true");
-	row.style.setProperty("--sp-depth", String(node.depth));
+	// 模型深度从 1 数起，首层页面在侧栏里没有层级缩进。
+	row.style.setProperty("--sp-depth", String(node.depth - 1));
 	if (node.childIds.length > 0) row.setAttribute("aria-expanded", String(expanded));
 	if (current) row.addClass("is-current");
 	if (node.kind === "group") row.addClass("is-group");
 	if (node.kind === "parent") row.addClass("is-parent");
-
-	const twisty = row.createSpan({ cls: "sp-twisty" });
-	if (node.childIds.length > 0) {
-		twisty.setText("▸");
-		if (expanded) twisty.addClass("is-open");
-	} else {
-		twisty.addClass("is-empty");
-	}
 
 	const icon = row.createSpan({ cls: "sp-icon" });
 	renderPageIcon(icon, node.kind, options.metadata ?? EMPTY_METADATA);

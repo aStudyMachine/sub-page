@@ -6,7 +6,11 @@
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	padding: 0;
+}
+
+/* 侧栏控件已有自己的横向内边距，避免再叠加 Obsidian 视图的默认留白。 */
+.workspace-leaf-content .view-content.sp-sidebar {
+	padding-inline: 0;
 }
 
 .sp-toolbar {
@@ -70,9 +74,10 @@
 .sp-row {
 	display: flex;
 	align-items: center;
-	gap: var(--size-4-1);
+	gap: var(--size-2-1);
 	/* 缩进靠 CSS 变量，行本身在 DOM 里是扁平的 —— 拖拽、键盘导航都不用管层级。 */
-	padding: 2px var(--size-4-2) 2px calc(var(--size-4-2) + var(--sp-depth, 0) * 14px);
+	padding: 2px var(--size-4-2);
+	padding-inline-start: calc(var(--size-2-3) + var(--sp-depth, 0) * 17px);
 	border-radius: var(--radius-s);
 	color: var(--text-normal);
 	font-size: var(--font-ui-small);
@@ -116,26 +121,6 @@
 	box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
 }
 
-.sp-twisty {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 auto;
-	width: 14px;
-	height: 14px;
-	color: var(--text-faint);
-	font-size: 9px;
-	transition: transform 100ms ease-in-out;
-}
-
-.sp-twisty.is-open {
-	transform: rotate(90deg);
-}
-
-.sp-twisty.is-empty {
-	visibility: hidden;
-}
-
 .sp-icon {
 	display: inline-flex;
 	align-items: center;
@@ -144,6 +129,10 @@
 	width: 16px;
 	font-size: var(--font-ui-small);
 	line-height: 1;
+}
+
+.sp-row .sp-icon {
+	width: 14px;
 }
 
 .sp-icon-lucide svg {
