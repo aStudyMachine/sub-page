@@ -197,15 +197,6 @@
 	text-align: center;
 }
 
-.sp-footer {
-	padding: var(--size-4-2);
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.sp-new-button {
-	width: 100%;
-}
-
 /* ---------------------------------------------------------------- 正文块 */
 
 .sp-block {

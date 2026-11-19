@@ -128,11 +128,6 @@ export class PageTreeView extends ItemView {
 		this.drag.attach(this.listEl);
 
 		this.emptyEl = container.createDiv({ cls: "sp-empty" });
-
-		const footer = container.createDiv({ cls: "sp-footer" });
-		const newButton = footer.createEl("button", { cls: "sp-new-button" });
-		newButton.setText(this.plugin.t("action.newPage"));
-		newButton.addEventListener("click", () => openCreate(this.plugin, null));
 	}
 
 	// ------------------------------------------------------------ 渲染
