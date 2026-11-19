@@ -12,6 +12,7 @@
 ## 决策
 
 - 文件系统操作一律走宿主 API：`vault.getAbstractFileByPath` / `TFolder.children` / `vault.createFolder` / `vault.create` / `fileManager.renameFile` / `vault.rename` / `vault.trash` / `vault.process` / `fileManager.processFrontMatter`，以及四个 `vault.on` 事件。
+- 点号开头的顺序文件不进 Vault 文件索引。在适配层通过公开的 `vault.adapter` 读取和写入，避免查不到现有文件后误走新建。回归测试见 [Obsidian 适配层测试](../../tests/unit/obsidianVaultAdapter.test.ts)。
 - `src/` 下不得出现 `node:*`、`fs`、`path`、`electron` 的 import。构建把 `electron` 与 Node 内置模块列为 external，是为了让误引入在打包时才暴露，不是许可。
 - 只有 `tests/`（真实库只读冒烟）与 `scripts/`（部署、生成测试库）可以用 Node —— 它们不随插件发布。
 - 这条约束落在适配层：`src/adapters/obsidianVaultAdapter.ts` 是全项目唯一接触宿主文件 API 的地方（ADR-0003）。
