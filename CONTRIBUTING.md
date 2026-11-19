@@ -28,12 +28,15 @@ npm run perf       # 规模基线（默认跳过）
 ### 部署到本地库
 
 ```bash
-npm run deploy -- <库名>            # 跑测试 → 构建 → 拷三件套
-npm run deploy -- <库名> --no-check # 只拷现有产物
-npm run deploy -- <库名> --restart  # 拷完重启 Obsidian（仅 Windows）
+npm run deploy -- <库名>            # 跑测试、构建并部署三件套
+npm run deploy -- <库名> --no-check # 部署已构建的三件套
+npm run deploy -- <库名> --css-only # 仅更新已安装插件的 styles.css，跳过测试与构建
+npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows）
 ```
 
 库名从 Obsidian 自己的注册表解析，所以脚本里不硬编码任何个人路径。仓库里附了一个手工验收库 `test-vault/sandbox/`（被 git 忽略），可以直接打开。
+
+部署会将被替换的文件备份到 `.agents/deploy-backups/`，写入后验证 SHA-256。如果某个库的写入或校验失败，脚本会回滚该库本次更新并报告此前已成功部署的库。部署完成后，在 Obsidian 中重载插件以应用改动。
 
 ### 测试策略
 
