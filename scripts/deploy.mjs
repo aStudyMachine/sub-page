@@ -1,17 +1,19 @@
 /**
- * 一键部署：单测 → 构建 → 把三个产物拷进指定 vault → 提示重载。
+ * 一键部署：单测 → 构建 → 备份并更新指定 vault → 提示重载。
  *
  * 用法（不硬编码任何路径 —— 切勿提交个人 vault 路径）：
  *   npm run deploy -- <库名|完整路径> [<库名|完整路径> …]
  *   npm run deploy -- <库名> --no-check      跳过测试与构建，只拷现有产物
+ *   npm run deploy -- <库名> --css-only      仅更新已安装插件的 styles.css
  *   npm run deploy -- <库名> --restart       部署完重启 Obsidian（目前仅 Windows）
  *   VAULT=<完整路径> npm run deploy          逃生口：库还没在 Obsidian 里打开过时
  *
  * 库名到路径的换算走 Obsidian 自己的 vault 注册表（scripts/resolve-vault.mjs），本机不必再维护一份映射。
  */
-import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { deployArtifacts } from "./deploy-artifacts.mjs";
 import {
 	listVaultNames,
 	looksLikePath,
@@ -23,6 +25,7 @@ import {
 
 const ARTIFACTS = ["main.js", "manifest.json", "styles.css"];
 const PLUGIN_ID = "sub-page";
+const BACKUP_ROOT = path.resolve(".agents", "deploy-backups");
 
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((arg) => arg.startsWith("--")));
@@ -40,7 +43,7 @@ function die(message) {
 
 function usage() {
 	console.error("用法: npm run deploy -- <库名|完整路径> [<库名|完整路径> …]");
-	console.error("选项: --no-check 跳过测试与构建; --restart 部署完重启 Obsidian");
+	console.error("选项: --no-check 跳过测试与构建，--css-only 仅更新样式，--restart 部署完重启 Obsidian");
 	if (registry.error) {
 		console.error(`\n（${registry.error}，所以只能给完整路径）`);
 	} else {
@@ -54,7 +57,7 @@ function resolveTargets() {
 	const problems = [];
 	for (const query of queries) {
 		if (looksLikePath(query) || existsSync(query)) {
-			if (!existsSync(path.join(query, ".obsidian"))) {
+			if (!statSync(path.join(query, ".obsidian"), { throwIfNoEntry: false })?.isDirectory()) {
 				problems.push(`"${query}" 看起来不是 vault：旁边没有 .obsidian 目录`);
 			} else {
 				targets.push({ name: vaultNameFromPath(query) || query, path: query });
@@ -63,7 +66,11 @@ function resolveTargets() {
 		}
 		const result = matchVault(registry.paths, query);
 		if (result.status === "ok") {
-			targets.push({ name: vaultNameFromPath(result.path), path: result.path });
+			if (statSync(path.join(result.path, ".obsidian"), { throwIfNoEntry: false })?.isDirectory()) {
+				targets.push({ name: vaultNameFromPath(result.path), path: result.path });
+			} else {
+				problems.push(`已注册的库 "${query}" 缺少 .obsidian 目录：${result.path}`);
+			}
 			continue;
 		}
 		if (result.status === "ambiguous") {
@@ -118,32 +125,38 @@ if (problems.length > 0) {
 	die(`\n目标解析失败：\n- ${problems.join("\n- ")}`);
 }
 
+const cssOnly = flags.has("--css-only");
+const requiredArtifacts = cssOnly ? ["main.js", "manifest.json"] : [];
 for (const target of targets) {
+	target.pluginDir = path.join(target.path, ".obsidian", "plugins", PLUGIN_ID);
+	if (!requiredArtifacts.every((file) =>
+		statSync(path.join(target.pluginDir, file), { throwIfNoEntry: false })?.isFile(),
+	)) {
+		die(`"${target.name}" 尚未完整安装 Sub Page，请先运行完整部署。`);
+	}
 	console.log(`目标: ${target.name} → ${target.path}`);
 }
 
-if (!flags.has("--no-check")) {
+if (!cssOnly && !flags.has("--no-check")) {
 	npmRun("test");
 	npmRun("build");
 }
 
-for (const file of ARTIFACTS) {
+const artifacts = cssOnly ? ["styles.css"] : ARTIFACTS;
+for (const file of artifacts) {
 	if (!existsSync(file)) {
 		die(`找不到产物 "${file}"，先跑 npm run build（或去掉 --no-check）。`);
 	}
 }
 
-const version = JSON.parse(readFileSync("manifest.json", "utf8")).version ?? "?";
+const deployed = cssOnly ? "styles.css" : `${PLUGIN_ID}@${JSON.parse(readFileSync("manifest.json", "utf8")).version ?? "?"}`;
 const done = [];
 for (const target of targets) {
-	const dir = path.join(target.path, ".obsidian", "plugins", PLUGIN_ID);
 	try {
-		mkdirSync(dir, { recursive: true });
-		for (const file of ARTIFACTS) {
-			cpSync(file, path.join(dir, file));
-		}
+		const backup = deployArtifacts(process.cwd(), target.pluginDir, BACKUP_ROOT, artifacts, requiredArtifacts);
 		done.push(target);
-		console.log(`已部署 ${PLUGIN_ID}@${version} → ${dir}`);
+		console.log(`已部署 ${deployed} → ${target.pluginDir}（SHA-256 校验通过）`);
+		if (backup) console.log(`原文件备份：${backup}`);
 	} catch (error) {
 		console.error(`部署到 "${target.path}" 失败：${error.message}`);
 		if (done.length > 0) {
@@ -156,5 +169,5 @@ for (const target of targets) {
 if (flags.has("--restart")) {
 	restartObsidian(targets[0]);
 } else {
-	console.log("\n在 Obsidian 里重载插件（Ctrl+P → Reload plugin without saving）或重启应用；插件不热更新。");
+	console.log("\n在 Obsidian 的第三方插件设置中关闭再启用 Sub Page，或重启应用以加载更新。");
 }

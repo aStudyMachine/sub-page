@@ -28,12 +28,15 @@ npm run perf       # 规模基线（默认跳过）
 ### 部署到本地库
 
 ```bash
-npm run deploy -- <库名>            # 跑测试 → 构建 → 拷三件套
-npm run deploy -- <库名> --no-check # 只拷现有产物
-npm run deploy -- <库名> --restart  # 拷完重启 Obsidian（仅 Windows）
+npm run deploy -- <库名>            # 跑测试、构建并部署三件套
+npm run deploy -- <库名> --no-check # 部署已构建的三件套
+npm run deploy -- <库名> --css-only # 仅更新已安装插件的 styles.css，跳过测试与构建
+npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows）
 ```
 
 库名从 Obsidian 自己的注册表解析，所以脚本里不硬编码任何个人路径。仓库里附了一个手工验收库 `test-vault/sandbox/`（被 git 忽略），可以直接打开。
+
+部署会将被替换的文件备份到 `.agents/deploy-backups/`，写入后验证 SHA-256。如果某个库的写入或校验失败，脚本会回滚该库本次更新并报告此前已成功部署的库。部署完成后，在 Obsidian 中重载插件以应用改动。
 
 ### 测试策略
 
@@ -54,7 +57,7 @@ npm run deploy -- test-vault/sandbox --no-check  # 拷三件套进 .obsidian/plu
 在 Obsidian 里 `打开文件夹作为库` 选择 `test-vault/sandbox`。若弹出「是否信任作者并启用插件」，选信任。
 页面根留空（整个库）。
 
-**先把面板开出来**：点左侧功能区最下面的 **子页面** 图标（列表树），或命令面板（`Ctrl+P`）执行 `Sub Page: 打开子页面面板`；树出现在**右侧栏**，标签名「子页面」。
+**先把面板开出来**：点左侧功能区最下面的 **子页面** 图标（列表树），或命令面板（`Ctrl+P`）执行 `Sub Page: 打开子页面面板`。首次打开时，页面树和文件列表同在**左侧栏**，标签名「子页面」。
 带 `_assets` 的那个文件列表是 Obsidian 原生文件浏览器，不是本插件的树 —— 两者并存是设计，不是重复。
 功能区和命令面板里都找不到入口，说明插件没加载，先去 设置 → 第三方插件 看有没有报错。
 
