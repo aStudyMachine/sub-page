@@ -4,7 +4,7 @@
 
 ## 1. 从 clean-mermaid 继承的既有结论
 
-- **tooltip 双气泡**：`aria-label` 就是 Obsidian 的 tooltip 来源，不要再设 `title`。只需关闭特定元素的气泡时，可用宿主的 `--no-tooltip: true` 保留无障碍名称。此行为已核对 Obsidian 1.15.1 的实现，见 [子页面标签样式](../styles.css)。
+- **tooltip 来源**：Obsidian 会沿鼠标所在元素向上查找 `aria-label`，所以文件行可以触发树容器的名称气泡。在带名称的标签和树容器上设置 `--no-tooltip: true` 可保留无障碍名称。此行为已用 Obsidian 1.15.1 的提示判定逻辑在 Chromium 中核对，见 [侧栏样式](../styles.css)。
 - **代码块处理器重复注册**：抛 `Code block postprocessor for language … is already registered`，注册必须 try/catch。
 - **声明式设置项布局**：`render(setting)` 的容器是横向 flex，块状内容要显式 `flex-direction: column; align-items: stretch`，并覆盖空/非空两种状态。
 - **社区评审 Error 级问题**：会让插件在社区目录里搜不到；同版本重发**不会**重跑评审，必须升版本。

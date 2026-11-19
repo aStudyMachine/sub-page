@@ -2,8 +2,9 @@
 
 /* ---------------------------------------------------------------- 侧栏 */
 
-/* Obsidian 用无障碍名称生成气泡，单独关闭此标签的悬停提示。 */
-.workspace-tab-header[data-type="sub-page-tree"] {
+/* Obsidian 用无障碍名称生成气泡，文件行会向上找到树容器的名称。 */
+.workspace-tab-header[data-type="sub-page-tree"],
+.sp-tree {
 	--no-tooltip: true;
 }
 
