@@ -19,6 +19,11 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 1. **`release.yml` 用 `workflow_dispatch` 触发，而 `workflow_dispatch` 只有在 workflow 文件已存在于默认分支时才可用**。所以「先合 main」是发版的前置条件，不是可选项。
 2. **社区评审的 Error 级问题会让插件在社区目录里搜不到，而且同版本重发不会重跑评审**。修完必须再升一个版本号，不能靠重发原版本。
 
+## 分支约定
+
+- `dev` 是公共开发分支。开工前同步 `origin/dev`，小调整默认直接在 `dev` 提交并推送。
+- 较大的改动从 `dev` 建工作分支，验收后合回 `dev`。发布时将验收通过的内容从 `dev` 合入 `main`。
+
 ## 代码约定
 
 - 界面不碰 Vault：读走 `plugin.service`，写走 `plugin.service.operations`。这条是 `docs/adr/0003` 的核心，破了就会出现侧栏与正文块不一致。
