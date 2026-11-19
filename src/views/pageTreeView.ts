@@ -256,11 +256,8 @@ export class PageTreeView extends ItemView {
 		this.focusId = node.id;
 		this.setFocusRing(node.id);
 		const target = event.target as HTMLElement;
-		if (target.closest(".sp-twisty")) {
-			this.toggle(node);
-			return;
-		}
-		if (node.kind === "group") {
+		const clickedBranchIcon = node.childIds.length > 0 && !this.searchTerm.trim() && target.closest(".sp-icon");
+		if (node.kind === "group" || clickedBranchIcon) {
 			this.toggle(node);
 			return;
 		}

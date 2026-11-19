@@ -17,10 +17,13 @@ const LUCIDE_PREFIX = "lucide:";
  */
 export function renderPageIcon(el: HTMLElement, kind: NodeKind, metadata: PageMetadata): void {
 	el.empty();
+	el.removeClass("sp-icon-lucide");
 	const icon = metadata.icon;
 	if (icon && icon.startsWith(LUCIDE_PREFIX)) {
 		setIcon(el, icon.slice(LUCIDE_PREFIX.length).trim());
-		el.addClass("sp-icon-lucide");
+		// 侧栏的父页面图标同时是展开入口，宿主未渲染时仍需显示图标。
+		if (el.hasChildNodes()) el.addClass("sp-icon-lucide");
+		else el.setText(DEFAULT_ICON[kind]);
 		return;
 	}
 	el.setText(icon ?? DEFAULT_ICON[kind]);

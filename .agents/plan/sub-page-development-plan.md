@@ -194,9 +194,9 @@ node scripts/gen-vault.mjs 1000 && npm run perf
 ### M2 · 侧栏树（0.0.3）
 
 任务：
-1. `views/pageTreeView.ts`：`registerView("sub-page-tree")`；`getIcon()` 用 `lucide:list-tree`；单例逻辑（`getLeavesOfType` → reveal / `getRightLeaf(false).setViewState`）。
-2. 行渲染：缩进（每层 16px）、箭头、图标（页面 / 分组目录 / 展开态）、标题、子页面数量徽标（仅父页面）。
-3. 交互：单击打开（`getLeaf` 尊重用户设置用 `workspace.openLinkText`）、箭头展开/折叠、当前文件高亮 + 祖先自动展开。
+1. `main.ts`：注册 `sub-page-tree` 视图，优先显示已有视图，首次用 `getLeftLeaf(false)` 在左侧栏创建标签。
+2. 行渲染：首层无层级缩进，后续每层 17px，显示图标、标题和父页面的子页面数量。
+3. 交互：单击页面标题打开笔记，单击有子节点的页面图标或分组行展开或折叠。搜索结果中的页面图标与标题均打开笔记。高亮当前文件并自动展开其祖先。
 4. 展开态持久化到 `data.json.expandedIds`（PageId 数组），索引重建后按 ID 恢复；ID 不存在则丢弃。
 5. 空状态：pageRoot 不存在 → 引导卡片（新建 Pages / 选择目录 / 稍后）；pageRoot 为空 → 「新建第一个页面」。
 6. 命令：打开侧栏、在侧栏中定位当前文件、全部折叠、全部展开。
