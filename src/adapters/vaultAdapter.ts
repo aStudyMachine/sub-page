@@ -44,6 +44,7 @@ export interface VaultAdapter {
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string | null>;
 	writeText(path: string, content: string): Promise<void>;
+	writeVerifiedText(path: string, content: string, previous: string | null): Promise<void>;
 	createFolder(path: string): Promise<void>;
 	createFile(path: string, content: string): Promise<void>;
 	/** 重命名目录（不承担链接维护）。 */

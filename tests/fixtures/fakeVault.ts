@@ -92,6 +92,11 @@ export class FakeVault implements VaultAdapter {
 		this.emit({ kind: "modify", path: normalized });
 	}
 
+	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
+		if (await this.readText(path) !== previous) throw new Error("顺序文件在迁移期间已变更");
+		await this.writeText(path, content);
+	}
+
 	async createFolder(path: string): Promise<void> {
 		const normalized = normalizePath(path);
 		if (this.folders.has(normalized)) return;

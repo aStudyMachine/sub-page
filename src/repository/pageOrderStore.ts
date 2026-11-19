@@ -1,12 +1,11 @@
 import { VaultAdapter } from "../adapters/vaultAdapter";
 import { OrderMap } from "../models/pageOrder";
-import { joinPath, normalizePath } from "../utils/pathUtils";
+import { equalsPath, joinPath, normalizePath } from "../utils/pathUtils";
 
-export const ORDER_FILE_NAME = ".subpage-order.json";
+export const ORDER_FILE_NAME = "order.json";
+export const LEGACY_ORDER_FILE_NAME = ".subpage-order.json";
 
-export function orderFilePath(pageRoot: string): string {
-	return joinPath(pageRoot, ORDER_FILE_NAME);
-}
+type OrdersByRoot = Record<string, OrderMap>;
 
 export interface OrderLoadResult {
 	order: OrderMap;
@@ -18,7 +17,7 @@ export interface OrderLoadResult {
  * 顺序文件读写。
  *
  * 损坏时绝不能因此拒绝显示树：退回名称排序 + 一句可点击的提示，是唯一可接受的行为。
- * 损坏的原文件不删、不覆盖 —— 用户可能想自己修回来。第一次真正写入时才覆盖。
+ * 插件顺序文件无法解析时保留原文件，以免覆盖其他页面根的数据。
  */
 export class PageOrderStore {
 	private order: OrderMap = {};
@@ -26,8 +25,16 @@ export class PageOrderStore {
 	private loadProblem: string | null = null;
 	/** 自写抑制：自己写文件触发的 modify 事件不该被当成外部变更再读一遍。 */
 	private writing = false;
+	private pending = Promise.resolve();
+	private pageRoot: string;
 
-	constructor(private readonly adapter: VaultAdapter, private pageRoot: string) {}
+	constructor(
+		private readonly adapter: VaultAdapter,
+		pageRoot: string,
+		readonly path: string,
+	) {
+		this.pageRoot = normalizePath(pageRoot);
+	}
 
 	get current(): OrderMap {
 		return this.order;
@@ -49,18 +56,35 @@ export class PageOrderStore {
 	}
 
 	async load(): Promise<OrderLoadResult> {
-		const path = orderFilePath(this.pageRoot);
-		const raw = await this.adapter.readText(path);
-		this.loaded = true;
-		if (raw === null) {
-			this.order = {};
-			this.loadProblem = null;
-			return { order: this.order, problem: null };
+		const root = this.pageRoot;
+		return this.enqueue(() => this.loadRoot(root));
+	}
+
+	private async loadRoot(root: string): Promise<OrderLoadResult> {
+		const legacyPath = joinPath(root, LEGACY_ORDER_FILE_NAME);
+		let order: OrderMap = {};
+		let problem: string | null = null;
+		try {
+			const raw = await this.adapter.readText(this.path);
+			const roots = parsePluginOrder(raw);
+			if (roots[root] !== undefined) {
+				order = roots[root];
+			} else {
+				const legacy = await this.adapter.readText(legacyPath);
+				if (legacy !== null) {
+					({ order, problem } = parseOrderFile(legacy));
+					if (!problem) order = await this.saveRoot(root, order, true);
+				}
+			}
+		} catch (error) {
+			problem = `无法读取或迁移顺序文件：${String(error)}`;
 		}
-		const parsed = parseOrderFile(raw);
-		this.order = parsed.order;
-		this.loadProblem = parsed.problem;
-		return { order: this.order, problem: parsed.problem };
+		if (this.pageRoot === root) {
+			this.order = order;
+			this.loadProblem = problem;
+			this.loaded = true;
+		}
+		return { order, problem };
 	}
 
 	async ensureLoaded(): Promise<OrderMap> {
@@ -76,136 +100,140 @@ export class PageOrderStore {
 	 * 只比内容不比时间戳 —— 同一毫秒写两次时时间戳分不出来。
 	 */
 	async reloadIfChanged(): Promise<boolean> {
-		const raw = await this.adapter.readText(orderFilePath(this.pageRoot));
-		const current = raw === null ? null : raw;
-		const serialized = JSON.stringify(this.order, null, 2) + "\n";
-		const normalizedCurrent = current === null ? "" : current.trim();
-		if (normalizedCurrent === "" && Object.keys(this.order).length === 0) return false;
-		if (normalizedCurrent === serialized.trim()) return false;
 		const before = JSON.stringify(this.order);
+		const problem = this.loadProblem;
 		await this.load();
-		return JSON.stringify(this.order) !== before;
+		return JSON.stringify(this.order) !== before || this.loadProblem !== problem;
+	}
+
+	matchesPath(path: string): boolean {
+		return equalsPath(path, this.path);
 	}
 
 	getKeys(scope: string): string[] {
-		return this.order[scope] ?? [];
+		return Object.prototype.hasOwnProperty.call(this.order, scope) ? this.order[scope] : [];
 	}
 
 	async setKeys(scope: string, keys: string[]): Promise<void> {
-		await this.ensureLoaded();
-		if (keys.length === 0) {
-			if (this.order[scope] === undefined) return;
-			delete this.order[scope];
-		} else {
-			this.order[scope] = [...keys];
-		}
-		await this.flush();
+		const next = [...keys];
+		return this.mutate((order) => this.replaceKeys(order, scope, next));
 	}
 
-	/** 改名：只替换一个元素，位置不动。 */
+	private replaceKeys(order: OrderMap, scope: string, keys: string[]): void {
+		if (keys.length === 0) delete order[scope];
+		else order[scope] = keys;
+	}
+
+	/** 改名时保留原来的手动排序位置。 */
 	async renameKey(scope: string, oldKey: string, newKey: string): Promise<void> {
-		const keys = this.getKeys(scope);
-		if (!keys.includes(oldKey)) return;
-		await this.setKeys(scope, keys.map((key) => (key === oldKey ? newKey : key)));
+		return this.mutate((order) => {
+			const keys = order[scope];
+			if (keys?.includes(oldKey)) order[scope] = keys.map((key) => key === oldKey ? newKey : key);
+		});
 	}
 
-	/** 移动：从源作用域摘掉，插到目标作用域末尾。两个作用域相同时等价于改名。 */
+	/** 从源作用域摘掉，插到目标作用域末尾。 */
 	async moveKey(fromScope: string, toScope: string, key: string, newKey = key): Promise<void> {
-		await this.ensureLoaded();
-		if (fromScope === toScope) {
-			await this.renameKey(fromScope, key, newKey);
-			return;
-		}
-		const from = this.getKeys(fromScope).filter((item) => item !== key);
-		const to = this.getKeys(toScope).filter((item) => item !== newKey);
-		to.push(newKey);
-		if (from.length === 0) delete this.order[fromScope];
-		else this.order[fromScope] = from;
-		this.order[toScope] = to;
-		await this.flush();
+		if (fromScope === toScope) return this.renameKey(fromScope, key, newKey);
+		return this.mutate((order) => {
+			this.replaceKeys(order, fromScope, (order[fromScope] ?? []).filter((item) => item !== key));
+			order[toScope] = [...(order[toScope] ?? []).filter((item) => item !== newKey), newKey];
+		});
 	}
 
-	/** 只从某个作用域里摘掉一项（父页面被删但目录留下时用）。 */
 	async removeFromScope(scope: string, key: string): Promise<void> {
-		const keys = this.getKeys(scope);
-		if (!keys.includes(key)) return;
-		await this.setKeys(scope, keys.filter((item) => item !== key));
+		return this.mutate((order) => {
+			if (order[scope]?.includes(key)) this.replaceKeys(order, scope, order[scope].filter((item) => item !== key));
+		});
 	}
 
-	/**
-	 * 删除：从所有作用域里清掉这个 key，并删掉以它为作用域的那一段。
-	 * 后者对应「整棵子树都走了」——留下孤立的作用域只会在结构检查里变成噪音。
-	 * 注意删父页面时目录还在（子页面保留），那种情况由调用侧显式 reorder，不走这里。
-	 */
 	async removeKey(key: string): Promise<void> {
-		await this.ensureLoaded();
-		let changed = false;
-		for (const scope of Object.keys(this.order)) {
-			const filtered = this.order[scope].filter((item) => item !== key);
-			if (filtered.length !== this.order[scope].length) {
-				changed = true;
-				if (filtered.length === 0) delete this.order[scope];
-				else this.order[scope] = filtered;
+		return this.mutate((order) => {
+			for (const scope of Object.keys(order)) {
+				if (order[scope].includes(key)) this.replaceKeys(order, scope, order[scope].filter((item) => item !== key));
 			}
-		}
-		if (this.order[key] !== undefined) {
-			delete this.order[key];
-			changed = true;
-		}
-		if (changed) await this.flush();
+			delete order[key];
+		});
 	}
 
-	/**
-	 * 把 from 这棵子树的作用域整体改名成 to 开头。
-	 *
-	 * 父页面改名或移动时，它**子页面**的排列顺序存在以它为作用域的那一段里，
-	 * 只改父一级的键会留下一个永远读不到的作用域 —— 用户的排序静默丢失，
-	 * 还会在结构检查里变成一堆孤立条目。
-	 */
+	/** 父页面改名或移动时，将整棵子树的作用域搬到新路径。 */
 	async remapScopeTree(from: string, to: string): Promise<void> {
-		await this.ensureLoaded();
 		if (from === to) return;
-		const prefix = from + "/";
-		let changed = false;
-		for (const key of Object.keys(this.order)) {
-			if (key !== from && !key.startsWith(prefix)) continue;
-			const next = to + key.slice(from.length);
-			const keys = this.order[key];
-			delete this.order[key];
-			const existing = this.order[next] ?? [];
-			// 目标作用域已经存在时合并去重，不覆盖 —— 两个都可能是用户排过的。
-			this.order[next] = [...existing, ...keys.filter((item) => !existing.includes(item))];
-			changed = true;
-		}
-		if (changed) await this.flush();
+		return this.mutate((order) => {
+			for (const key of Object.keys(order)) {
+				if (key !== from && !key.startsWith(from + "/")) continue;
+				const next = to + key.slice(from.length);
+				const keys = order[key];
+				delete order[key];
+				const existing = order[next] ?? [];
+				order[next] = [...existing, ...keys.filter((item) => !existing.includes(item))];
+			}
+		});
 	}
 
-	/** 删掉以 scope 为根的整棵子树的作用域（整棵子树被移除时用）。 */
 	async removeScopeTree(scope: string): Promise<void> {
-		await this.ensureLoaded();
-		const prefix = scope + "/";
-		let changed = false;
-		for (const key of Object.keys(this.order)) {
-			if (key !== scope && !key.startsWith(prefix)) continue;
-			delete this.order[key];
-			changed = true;
-		}
-		if (changed) await this.flush();
+		return this.mutate((order) => {
+			for (const key of Object.keys(order)) {
+				if (key === scope || key.startsWith(scope + "/")) delete order[key];
+			}
+		});
 	}
 
-	/** 直接铺一个作用域的完整次序（拖拽排序用）。 */
 	async reorder(scope: string, keys: string[]): Promise<void> {
 		await this.setKeys(scope, keys);
 	}
 
-	private async flush(): Promise<void> {
+	private mutate(update: (order: OrderMap) => void): Promise<void> {
+		const root = this.pageRoot;
+		return this.enqueue(async () => {
+			const current = this.pageRoot === root && this.loaded ? this.order : (await this.loadRoot(root)).order;
+			const draft: OrderMap = Object.assign(Object.create(null), current);
+			update(draft);
+			if (JSON.stringify(draft) === JSON.stringify(current)) return;
+			await this.saveRoot(root, draft);
+			if (this.pageRoot === root) this.order = draft;
+		});
+	}
+
+	private enqueue<T>(work: () => Promise<T>): Promise<T> {
+		const result = this.pending.then(work);
+		this.pending = result.then(() => undefined, () => undefined);
+		return result;
+	}
+
+	private async saveRoot(root: string, order: OrderMap, migrating = false): Promise<OrderMap> {
+		const raw = await this.adapter.readText(this.path);
+		const roots = parsePluginOrder(raw);
+		// 同步文件可能在迁移读取旧文件期间到达，已有根的顺序优先。
+		if (migrating && roots[root] !== undefined) return roots[root];
+		roots[root] = order;
+		const content = JSON.stringify({ roots }, null, 2) + "\n";
 		this.writing = true;
 		try {
-			await this.adapter.writeText(orderFilePath(this.pageRoot), JSON.stringify(this.order, null, 2) + "\n");
+			if (migrating) await this.adapter.writeVerifiedText(this.path, content, raw);
+			else await this.adapter.writeText(this.path, content);
 		} finally {
 			this.writing = false;
 		}
+		return order;
 	}
+}
+
+function parsePluginOrder(raw: string | null): OrdersByRoot {
+	const roots: OrdersByRoot = Object.create(null);
+	if (raw === null) return roots;
+	const parsed = JSON.parse(raw) as { roots?: unknown } | null;
+	if (!parsed?.roots || typeof parsed.roots !== "object" || Array.isArray(parsed.roots)) {
+		throw new Error("插件顺序文件的结构不对");
+	}
+	for (const [root, value] of Object.entries(parsed.roots)) {
+		if (!value || typeof value !== "object" || Array.isArray(value) ||
+			Object.values(value).some((keys) => !Array.isArray(keys) || keys.some((key) => typeof key !== "string" || !key))) {
+			throw new Error("插件顺序文件的结构不对");
+		}
+		roots[root] = Object.assign(Object.create(null), value) as OrderMap;
+	}
+	return roots;
 }
 
 export function parseOrderFile(raw: string): { order: OrderMap; problem: string | null } {
@@ -218,7 +246,7 @@ export function parseOrderFile(raw: string): { order: OrderMap; problem: string 
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 		return { order: {}, problem: "顺序文件的结构不对，已退回按名称排序" };
 	}
-	const order: OrderMap = {};
+	const order: OrderMap = Object.create(null);
 	for (const [scope, value] of Object.entries(parsed as Record<string, unknown>)) {
 		if (!Array.isArray(value)) continue;
 		const keys = value.filter((item): item is string => typeof item === "string" && item.length > 0);

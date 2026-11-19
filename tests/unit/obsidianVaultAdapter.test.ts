@@ -3,14 +3,16 @@ import { type App, TFile, TFolder } from "obsidian";
 import { ObsidianVaultAdapter } from "../../src/adapters/obsidianVaultAdapter";
 import { PageService } from "../../src/core/pageService";
 import { DEFAULT_SETTINGS } from "../../src/models/settings";
-import { ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
+import { LEGACY_ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
 
 it("从 Vault 索引之外读取、更新并重新载入手动顺序", async () => {
 	const notes = ["a.md", "b.md", "c.md"].map((path) =>
 		Object.assign(new TFile(), { path, name: path, stat: { mtime: 0, ctime: 0 } }),
 	);
 	const root = Object.assign(new TFolder(), { children: notes });
-	const disk = new Map([[ORDER_FILE_NAME, JSON.stringify({ "": ["b.md", "c.md", "a.md"] })]]);
+	const orderPath = ".custom/plugins/sub-page/order.json";
+	const legacy = JSON.stringify({ "": ["b.md", "c.md", "a.md"] });
+	const disk = new Map([[LEGACY_ORDER_FILE_NAME, legacy]]);
 	const adapter = new ObsidianVaultAdapter({
 		vault: {
 			getAbstractFileByPath: (path: string) => (path === "/" ? root : null),
@@ -24,6 +26,12 @@ it("从 Vault 索引之外读取、更新并重新载入手动顺序", async () 
 				write: async (path: string, contents: string) => {
 					disk.set(path, contents);
 				},
+				rename: async (from: string, to: string) => {
+					if (disk.has(to)) throw new Error("文件已存在");
+					disk.set(to, disk.get(from)!);
+					disk.delete(from);
+				},
+				remove: async (path: string) => { disk.delete(path); },
 			},
 			on: vi.fn(),
 			offref: vi.fn(),
@@ -31,6 +39,7 @@ it("从 Vault 索引之外读取、更新并重新载入手动顺序", async () 
 	} as unknown as App);
 	const makeService = () => new PageService({
 		adapter,
+		orderPath,
 		settings: () => DEFAULT_SETTINGS,
 		onChange: vi.fn(),
 	});
@@ -38,9 +47,11 @@ it("从 Vault 索引之外读取、更新并重新载入手动顺序", async () 
 	await service.start();
 	try {
 		expect(service.getRoots().map((node) => node.title)).toEqual(["b", "c", "a"]);
+		expect(JSON.parse(disk.get(orderPath)!)).toEqual({ roots: { "": { "": ["b.md", "c.md", "a.md"] } } });
 		await service.operations.reorderScope(null, ["c.md", "b.md", "a.md"]);
 		expect(service.getRoots().map((node) => node.title)).toEqual(["c", "b", "a"]);
-		expect(JSON.parse(disk.get(ORDER_FILE_NAME)!)).toEqual({ "": ["c.md", "b.md", "a.md"] });
+		expect(JSON.parse(disk.get(orderPath)!)).toEqual({ roots: { "": { "": ["c.md", "b.md", "a.md"] } } });
+		expect(disk.get(LEGACY_ORDER_FILE_NAME)).toBe(legacy);
 	} finally {
 		service.dispose();
 	}
