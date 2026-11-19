@@ -27,6 +27,7 @@ export class PageTreeView extends ItemView {
 	private searchEl!: HTMLInputElement;
 	private searchTerm = "";
 	private focusId: PageId | null = null;
+	private lastOpenedFile: TFile | null = null;
 	private metadataCache = new Map<string, PageMetadata>();
 	private metadataEpoch = -1;
 	private searchTimer: number | null = null;
@@ -64,8 +65,9 @@ export class PageTreeView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.buildChrome();
+		this.lastOpenedFile = this.app.workspace.getActiveFile();
 		this.render();
-		this.registerEvent(this.app.workspace.on("file-open", () => this.highlightCurrent()));
+		this.registerEvent(this.app.workspace.on("file-open", (file) => this.onFileOpen(file)));
 		// 页面模型是「任意笔记都是页面」，这件事光看树看不出来 —— 第一次打开说一遍。
 		if (!hintSeen(this.app, "welcome")) {
 			markHintSeen(this.app, "welcome");
@@ -161,7 +163,6 @@ export class PageTreeView extends ItemView {
 			this.appendRow(node, { expanded: this.expanded.has(node.id), current: node.id === current });
 		}
 		this.renderEmptyState();
-		this.highlightCurrent();
 		void this.ensureMetadata(this.rows);
 	}
 
@@ -258,14 +259,12 @@ export class PageTreeView extends ItemView {
 
 	private onRowClick(event: MouseEvent, node: PageNode): void {
 		this.focusId = node.id;
-		this.setFocusRing(node.id);
 		const target = event.target as HTMLElement;
 		const clickedBranchIcon = node.childIds.length > 0 && !this.searchTerm.trim() && target.closest(".sp-icon");
-		if (node.kind === "group" || clickedBranchIcon) {
-			this.toggle(node);
-			return;
-		}
-		void openPage(this.plugin, node);
+		const togglesBranch = node.kind === "group" || clickedBranchIcon;
+		if (togglesBranch) this.toggle(node);
+		this.setFocusRing(node.id);
+		if (!togglesBranch) void openPage(this.plugin, node);
 	}
 
 	private toggle(node: PageNode): void {
@@ -404,23 +403,23 @@ export class PageTreeView extends ItemView {
 
 	// ------------------------------------------------------------ 当前页面
 
-	private currentPageId(): PageId | null {
-		const file = this.app.workspace.getActiveFile();
+	private currentPageId(file = this.app.workspace.getActiveFile()): PageId | null {
 		if (!(file instanceof TFile)) return null;
 		return this.service.nodeForFilePath(file.path)?.id ?? null;
 	}
 
-	/** 打开文件时：高亮它，并把它的祖先全部展开。 */
-	highlightCurrent(): void {
-		const id = this.currentPageId();
-		if (!id) return;
-		const ancestors = this.service.getAncestors(id).map((node) => node.id as string);
-		const before = this.expanded.size;
-		this.expanded = expandAncestors(this.expanded, ancestors);
-		if (this.expanded.size !== before) {
-			void this.plugin.setExpandedIds(this.expanded);
-			this.render();
-			return;
+	/** 切换文件时才自动展开，保留用户对当前文件所在目录的折叠操作。 */
+	private onFileOpen(file: TFile | null): void {
+		if (file === this.lastOpenedFile) return;
+		this.lastOpenedFile = file;
+		const id = this.currentPageId(file);
+		if (id) {
+			const ancestors = this.service.getAncestors(id).map((node) => node.id);
+			const expanded = expandAncestors(this.expanded, ancestors);
+			if (expanded.size !== this.expanded.size) {
+				this.expanded = expanded;
+				this.render();
+			}
 		}
 		for (const row of Array.from(this.listEl.querySelectorAll<HTMLElement>(".sp-row"))) {
 			row.toggleClass("is-current", row.getAttribute("data-id") === id);
@@ -445,11 +444,7 @@ export class PageTreeView extends ItemView {
 		this.render();
 	}
 
-	/**
-	 * 命令面板用：把当前文件定位出来。
-	 * 只调 highlightCurrent 不够 —— 它要求树已经展开过祖先链，
-	 * 面板是新开的时候整个过程还没跑过。
-	 */
+	/** 主动定位会退出搜索并展开当前文件的祖先链。 */
 	revealCurrent(): void {
 		const id = this.currentPageId();
 		if (!id) return;
