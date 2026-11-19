@@ -2,6 +2,11 @@
 
 /* ---------------------------------------------------------------- 侧栏 */
 
+/* Obsidian 用无障碍名称生成气泡，单独关闭此标签的悬停提示。 */
+.workspace-tab-header[data-type="sub-page-tree"] {
+	--no-tooltip: true;
+}
+
 .sp-sidebar {
 	display: flex;
 	flex-direction: column;
