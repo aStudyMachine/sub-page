@@ -49,25 +49,14 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	}
 
 	async readText(path: string): Promise<string | null> {
-		const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
-		if (!(file instanceof TFile)) return null;
-		try {
-			// cachedRead 会走宿主的文件缓存：同一文件反复读（元数据、正文块）不重复落盘。
-			return await this.app.vault.cachedRead(file);
-		} catch {
-			return null;
-		}
+		const normalized = normalizePath(path);
+		const adapter = this.app.vault.adapter;
+		// 顺序文件以点开头，存在于磁盘上但不会进入 Vault 的文件索引。
+		return (await adapter.exists(normalized)) ? adapter.read(normalized) : null;
 	}
 
 	async writeText(path: string, content: string): Promise<void> {
-		const normalized = normalizePath(path);
-		const file = this.app.vault.getAbstractFileByPath(normalized);
-		if (file instanceof TFile) {
-			// process 保证写入与宿主的其它写入不互相覆盖。
-			await this.app.vault.process(file, () => content);
-			return;
-		}
-		await this.app.vault.create(normalized, content);
+		await this.app.vault.adapter.write(normalizePath(path), content);
 	}
 
 	async createFolder(path: string): Promise<void> {
