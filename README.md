@@ -48,6 +48,10 @@ A new page starts as a regular note. When it receives its first child, Sub Page 
 
 To customize a page’s icon and description, add `icon` and `description` in its Obsidian Properties. The icon can be an emoji like `📁` or a value like `lucide:folder`.
 
+## Work with an agent
+
+In Sub Page settings, choose **Install Agent Skill** to preview and install a note organization guide in this vault. You can choose the skills folder and add an editable instruction to the vault’s `AGENTS.md`. Existing rules outside the Sub Page section are preserved.
+
 ## Install
 
 Sub Page supports Obsidian 1.15.0 or newer on desktop and mobile.

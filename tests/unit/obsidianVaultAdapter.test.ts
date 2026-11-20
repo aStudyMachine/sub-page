@@ -5,6 +5,27 @@ import { PageService } from "../../src/core/pageService";
 import { DEFAULT_SETTINGS } from "../../src/models/settings";
 import { LEGACY_ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
 
+it("覆盖 AGENTS.md 中途失败时保留已校验的原文备份", async () => {
+	const path = "AGENTS.md";
+	const disk = new Map([[path, "原有规则"]]);
+	const adapter = new ObsidianVaultAdapter({
+		vault: { adapter: {
+			read: async (name: string) => disk.get(name),
+			write: async (name: string, content: string) => { disk.set(name, content); },
+			remove: async (name: string) => { disk.delete(name); },
+			process: async (name: string, edit: (value: string) => string) => {
+				edit(disk.get(name)!);
+				disk.set(name, "");
+				throw new Error("写入中断");
+			},
+		} },
+	} as unknown as App);
+	await expect(adapter.writeVerifiedText(path, "新规则", "原有规则", true)).rejects.toThrow(/原文备份：AGENTS\.md\..+\.backup/);
+	const backup = [...disk.keys()].find((name) => name.endsWith(".backup"));
+	expect(backup).toBeDefined();
+	expect(disk.get(backup!)).toBe("原有规则");
+});
+
 it("宿主先返回时，等到原笔记实际移出才结束重命名", async () => {
 	const note = Object.assign(new TFile(), { path: "项目/项目.md" });
 	const ref = {};

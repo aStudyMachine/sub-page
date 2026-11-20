@@ -48,6 +48,10 @@
 
 可在笔记的 Obsidian 属性里添加 `icon` 和 `description`，设置图标和描述。图标可以写 `📁` 或 `lucide:folder`。
 
+## 用 Agent 整理笔记
+
+在 Sub Page 设置中选择 **安装 Agent Skill**，预览后将笔记整理指南安装到当前库。可以选择库内的 Skill 存放目录，也可以在库根 `AGENTS.md` 中写入可编辑的入口指令。原有规则保留在 Sub Page 小节之外。
+
 ## 安装
 
 支持桌面和移动端，需要 Obsidian 1.15.0 或更新版本。

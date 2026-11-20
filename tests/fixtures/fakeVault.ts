@@ -106,8 +106,12 @@ export class FakeVault implements VaultAdapter {
 	}
 
 	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
-		if (await this.readText(path) !== previous) throw new Error("顺序文件在迁移期间已变更");
+		if (await this.readText(path) !== previous) throw new Error(`文件已变更：${path}`);
 		await this.writeText(path, content);
+	}
+
+	async ensureConfigFolders(path: string): Promise<void> {
+		await this.createFolder(path);
 	}
 
 	async createFolder(path: string): Promise<void> {

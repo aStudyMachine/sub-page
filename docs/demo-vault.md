@@ -28,6 +28,10 @@
 
 宿主异常注入、并发和万篇规模分别由自动化测试与 [性能基线](perf-baseline.md)覆盖。移动端、屏幕阅读器和插件冲突提示需要对应环境。测试插件冲突时，在隔离副本启用一个已知冲突插件。
 
+## 验收 Agent Skill 安装
+
+安装 Agent Skill 的验收也使用副本。在 Sub Page 设置打开安装预览并取消，确认库内没有新文件。再安装到默认位置，编辑入口指令后重新打开，检查已保存的文字正确回填。用自定义目录和关闭 `AGENTS.md` 写入的选项再测一次。
+
 ## 更新 README 截图
 
 - [页面树和卡片](screenshots/demo-overview.png)。打开 Studio Atlas 的阅读视图，展开 Studio Atlas 与 Research，留出足够宽度以显示两列卡片。

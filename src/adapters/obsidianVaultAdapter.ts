@@ -6,7 +6,7 @@ import {
 	VaultAdapter,
 	VaultEvent,
 } from "./vaultAdapter";
-import { normalizePath } from "../utils/pathUtils";
+import { dirname, normalizePath } from "../utils/pathUtils";
 
 /**
  * 真实宿主适配器：整个插件里唯一 import obsidian 文件系统 API 的地方。
@@ -73,24 +73,56 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		await this.app.vault.adapter.write(normalizePath(path), content);
 	}
 
-	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
+	async writeVerifiedText(path: string, content: string, previous: string | null, keepRecoveryCopy = false): Promise<void> {
 		const adapter = this.app.vault.adapter;
 		const target = normalizePath(path);
-		const staged = `${target}.migration-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+		const staged = `${target}.write-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+		const backup = keepRecoveryCopy && previous !== null ? `${staged}.backup` : null;
+		let writingExistingFile = false;
+		let retainBackup = false;
 		try {
 			await adapter.write(staged, content);
-			if (await adapter.read(staged) !== content) throw new Error("迁移文件校验失败");
+			if (await adapter.read(staged) !== content) throw new Error(`文件写入校验失败：${target}`);
 			if (previous === null) {
+				if (await adapter.exists(target)) throw new Error(`文件已变更：${target}`);
 				await adapter.rename(staged, target);
 			} else {
+				if (backup !== null) {
+					await adapter.write(backup, previous);
+					if (await adapter.read(backup) !== previous) throw new Error(`备份校验失败：${target}`);
+				}
 				await adapter.process(target, (current) => {
-					if (current !== previous) throw new Error("顺序文件在迁移期间已变更");
+					if (current !== previous) throw new Error(`文件已变更：${target}`);
+					writingExistingFile = true;
 					return content;
 				});
 			}
-			if (await adapter.read(target) !== content) throw new Error("迁移后的顺序文件校验失败");
+			if (await adapter.read(target) !== content) throw new Error(`文件写入校验失败：${target}`);
+		} catch (error) {
+			// 宿主可能已经开始覆盖原文件，保留原文以备恢复。
+			if (backup !== null && writingExistingFile) {
+				retainBackup = true;
+				throw new Error(`${String(error)}（原文备份：${backup}）`);
+			}
+			throw error;
 		} finally {
 			await adapter.remove(staged).catch(() => undefined);
+			if (backup !== null && !retainBackup) await adapter.remove(backup).catch(() => undefined);
+		}
+	}
+
+	async ensureConfigFolders(path: string): Promise<void> {
+		const target = normalizePath(path);
+		if (!target) return;
+		const adapter = this.app.vault.adapter;
+		const existing = await adapter.stat(target);
+		if (existing?.type === "folder") return;
+		if (existing) throw new Error(`同名文件占用了目录路径：${target}`);
+		await this.ensureConfigFolders(dirname(target));
+		try {
+			await adapter.mkdir(target);
+		} catch (error) {
+			if ((await adapter.stat(target))?.type !== "folder") throw error;
 		}
 	}
 
