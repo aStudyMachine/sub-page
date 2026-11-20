@@ -12,6 +12,7 @@ data.json
 test-vault/
 
 # Local tooling / notes
+/tmp/
 .qoder/
 .trae/
 .zcode/
