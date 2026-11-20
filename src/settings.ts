@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, SettingDefinitionItem, TFile } from "obsidian";
 import type SubPagePlugin from "./main";
 import { EXCLUDED_FOLDER_DEFAULTS, SubPageSettings } from "./models/settings";
+import { AgentSkillModal } from "./modals/agentSkillModal";
 
 /**
  * 设置面板用 1.13 起的声明式定义（`getSettingDefinitions`），不用已废弃的 `display()`。
@@ -122,6 +123,11 @@ export class SubPageSettingTab extends PluginSettingTab {
 						},
 					},
 				],
+			},
+			{
+				name: t("agentSkill.title"),
+				desc: t("agentSkill.settings"),
+				action: () => new AgentSkillModal(this.subPage).open(),
 			},
 			{
 				type: "group",

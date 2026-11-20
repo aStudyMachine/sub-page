@@ -5,6 +5,7 @@ import { PageOrderStore } from "../repository/pageOrderStore";
 import { DEFAULT_MAX_DEPTH, isExcludedFolder } from "../repository/pageScanner";
 import { checkName } from "../utils/nameValidator";
 import { basename, dirname, isMarkdownFile, joinPath, normalizePath, stripExtension } from "../utils/pathUtils";
+import { AgentSkillInstaller } from "./agentSkillInstaller";
 
 export type OpFailureReason = "invalid-name" | "name-conflict" | "not-found" | "not-allowed" | "io-error";
 
@@ -48,11 +49,13 @@ export interface OperationDeps {
  * 返回结果类型而不是抛异常 —— 界面需要一句能读懂的原因，而不是一个 Error 对象。
  */
 export class PageOperationService {
+	readonly agentSkill: AgentSkillInstaller;
 	private readonly adapter: VaultAdapter;
 	private readonly order: PageOrderStore;
 	private readonly changingPairs = new Set<PageId>();
 
 	constructor(private readonly deps: OperationDeps) {
+		this.agentSkill = new AgentSkillInstaller(deps.adapter);
 		this.adapter = deps.adapter;
 		this.order = deps.order;
 	}
