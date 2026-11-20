@@ -12,6 +12,7 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 | `docs/adr/` | 5 篇架构决策（页面模型、路径 ID、分层边界、顺序文件、只用宿主 API） | 想改这几件事之前 |
 | `CONTRIBUTING.md` | 目录职责表、测试策略、手动验收清单、发布顺序 | 提 PR 之前 |
 | `docs/agent-lessons.md` | 跨会话的踩坑记录 | 踩到坑时先查，解决后补一条 |
+| `skills/sub-page-vault-deploy/SKILL.md` | 本地部署和验收流程 | 部署到 Obsidian 库或验证部署时读 |
 | `docs/perf-baseline.md` | 扫描耗时实测 | 讨论性能优化之前 |
 
 ## 两条硬约束
