@@ -198,7 +198,7 @@ export class PageOrderStore {
 	private mutate(update: (order: OrderMap) => void, root = this.pageRoot): Promise<void> {
 		return this.enqueue(async () => {
 			const current = this.pageRoot === root && this.loaded ? this.order : (await this.loadRoot(root)).order;
-			const draft: OrderMap = Object.assign(Object.create(null), current);
+			const draft: OrderMap = Object.assign(Object.create(null) as OrderMap, current);
 			update(draft);
 			if (JSON.stringify(draft) === JSON.stringify(current)) return;
 			await this.saveRoot(root, draft);
@@ -231,20 +231,31 @@ export class PageOrderStore {
 }
 
 function parsePluginOrder(raw: string | null): OrdersByRoot {
-	const roots: OrdersByRoot = Object.create(null);
+	const roots = Object.create(null) as OrdersByRoot;
 	if (raw === null) return roots;
-	const parsed = JSON.parse(raw) as { roots?: unknown } | null;
-	if (!parsed?.roots || typeof parsed.roots !== "object" || Array.isArray(parsed.roots)) {
+	const parsed: unknown = JSON.parse(raw);
+	if (!parsed || typeof parsed !== "object" || !("roots" in parsed) ||
+		!parsed.roots || typeof parsed.roots !== "object" || Array.isArray(parsed.roots)) {
 		throw new Error("插件顺序文件的结构不对");
 	}
 	for (const [root, value] of Object.entries(parsed.roots)) {
-		if (!value || typeof value !== "object" || Array.isArray(value) ||
-			Object.values(value).some((keys) => !Array.isArray(keys) || keys.some((key) => typeof key !== "string" || !key))) {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
 			throw new Error("插件顺序文件的结构不对");
 		}
-		roots[root] = Object.assign(Object.create(null), value) as OrderMap;
+		const order = Object.create(null) as OrderMap;
+		for (const [scope, keys] of Object.entries(value as Record<string, unknown>)) {
+			if (!Array.isArray(keys) || !keys.every(isOrderKey)) {
+				throw new Error("插件顺序文件的结构不对");
+			}
+			order[scope] = keys;
+		}
+		roots[root] = order;
 	}
 	return roots;
+}
+
+function isOrderKey(key: unknown): key is string {
+	return typeof key === "string" && key.length > 0;
 }
 
 export function parseOrderFile(raw: string): { order: OrderMap; problem: string | null } {
@@ -257,10 +268,10 @@ export function parseOrderFile(raw: string): { order: OrderMap; problem: string 
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 		return { order: {}, problem: "顺序文件的结构不对，已退回按名称排序" };
 	}
-	const order: OrderMap = Object.create(null);
+	const order = Object.create(null) as OrderMap;
 	for (const [scope, value] of Object.entries(parsed as Record<string, unknown>)) {
 		if (!Array.isArray(value)) continue;
-		const keys = value.filter((item): item is string => typeof item === "string" && item.length > 0);
+		const keys = value.filter(isOrderKey);
 		if (keys.length > 0) order[scope] = keys;
 	}
 	return { order, problem: null };

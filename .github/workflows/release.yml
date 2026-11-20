@@ -81,17 +81,14 @@ jobs:
             exit 1
           fi
 
-      - name: 打包
-        if: inputs.dry_run == false
-        run: |
-          VERSION=$(node -p "require('./manifest.json').version")
-          zip -j "sub-page-$VERSION.zip" main.js manifest.json styles.css
-
       - name: 证明来源
         if: inputs.dry_run == false
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: "sub-page-*.zip"
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       - name: 发布
         if: inputs.dry_run == false
@@ -99,5 +96,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./manifest.json').version")
-          gh release create "$VERSION" main.js manifest.json styles.css "sub-page-$VERSION.zip" \
+          gh release create "$VERSION" main.js manifest.json styles.css \
             --verify-tag --title "$VERSION" --notes-file "docs/release-notes/$VERSION.md"

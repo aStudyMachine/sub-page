@@ -276,7 +276,7 @@ export class PageTreeView extends ItemView {
 			event.preventDefault();
 			const result = navigate(this.rows, this.focusId, direction, this.expanded);
 			if (result.focusId) {
-				this.focusId = result.focusId as PageId;
+				this.focusId = result.focusId;
 				if (result.expanded !== null) {
 					if (result.expanded) this.expanded.add(result.focusId);
 					else this.expanded.delete(result.focusId);

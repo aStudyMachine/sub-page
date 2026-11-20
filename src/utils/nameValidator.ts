@@ -15,9 +15,16 @@ export interface NameCheck {
 	detail?: string;
 }
 
-const ILLEGAL_CHARS = /[\\/:*?"<>|\u0000-\u001f]/;
+const ILLEGAL_CHARS = /[\\/:*?"<>|]/;
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const MAX_LENGTH = 100;
+
+function illegalCharacter(name: string): string | undefined {
+	for (const character of name) {
+		if (character.charCodeAt(0) < 32 || ILLEGAL_CHARS.test(character)) return character;
+	}
+	return undefined;
+}
 
 /**
  * 名称合法性。比 Obsidian 本身更严：文件名最终要落到 Windows 上，
@@ -28,8 +35,8 @@ export function checkName(rawName: string): NameCheck {
 	if (name.length === 0) return { ok: false, problem: "empty" };
 	if (name.length > MAX_LENGTH) return { ok: false, problem: "too-long" };
 
-	const illegal = ILLEGAL_CHARS.exec(name);
-	if (illegal) return { ok: false, problem: "illegal-char", detail: illegal[0] };
+	const illegal = illegalCharacter(name);
+	if (illegal) return { ok: false, problem: "illegal-char", detail: illegal };
 
 	// "." 与 ".." 是路径语义，不是名字。
 	if (name === "." || name === "..") return { ok: false, problem: "dot-name" };
@@ -46,5 +53,5 @@ export function checkName(rawName: string): NameCheck {
 
 /** 扫描时对已有文件名的宽松判定：只挡真正会破坏路径的名字。 */
 export function isScannableName(name: string): boolean {
-	return name.length > 0 && !ILLEGAL_CHARS.test(name) && name !== "." && name !== "..";
+	return name.length > 0 && illegalCharacter(name) === undefined && name !== "." && name !== "..";
 }

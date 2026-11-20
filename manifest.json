@@ -1,7 +1,7 @@
 {
   "id": "sub-page",
   "name": "Sub Page",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.15.0",
   "description": "Turn your vault into a tree of nested pages: create, rename, move and reorder pages in a sidebar, and list sub-pages inside any note.",
   "author": "Marcus Wu",

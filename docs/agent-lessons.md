@@ -109,3 +109,7 @@ Obsidian 1.15.1 正在更新链接时，`fileManager.renameFile` 可能先返回
 ### 2.17 侧栏单击的反馈在事件返回前验收
 
 为双击改名延迟重绘会让高频的展开和折叠操作产生顿挫。侧栏通过菜单和 `F2` 提供改名。测试在单击回调返回后直接断言子页面行是否可见，轮询最终状态会漏掉这类延迟。见 [侧栏视图测试](../tests/unit/pageTreeView.test.ts)。
+
+### 2.18 系统回收失败可能正常返回
+
+Obsidian 1.15.1 的 FileManager.trashFile() 在系统回收失败时返回 false，已安装的 API 类型仍声明 Promise<void>。把宿主结果作为 unknown 检查，遇到 false 先返回删除失败，保留页面和手动顺序。见 [宿主变更记录](https://obsidian.md/changelog/2026-11-12-desktop-v1.15.1/) 和 [适配层回归测试](../tests/unit/obsidianVaultAdapter.test.ts)。

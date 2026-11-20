@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, SettingDefinitionItem, TFile } from "obsidian";
 import type SubPagePlugin from "./main";
-import { EXCLUDED_FOLDER_DEFAULTS, SubPageSettings } from "./models/settings";
+import { EXCLUDED_FOLDER_DEFAULTS, SubPageSettings, migrateSettings } from "./models/settings";
 import { AgentSkillModal } from "./modals/agentSkillModal";
 
 /**
@@ -31,7 +31,7 @@ export class SubPageSettingTab extends PluginSettingTab {
 			await this.subPage.refreshIndex();
 			return;
 		}
-		await this.subPage.updateSettings({ [key]: value } as Partial<SubPageSettings>);
+		await this.subPage.updateSettings(migrateSettings({ ...this.subPage.settings, [key]: value }).settings);
 		// 页面根变了要重扫；语言变了要重注册命令与重建面板文案。
 		if (key === "pageRoot") await this.subPage.applyPageRoot();
 		if (key === "language") {

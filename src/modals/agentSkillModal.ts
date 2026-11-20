@@ -71,21 +71,21 @@ export class AgentSkillModal extends Modal {
 			install.disabled = !pathValid;
 		});
 		buttons.createEl("button", { text: t("modal.cancel") }).addEventListener("click", () => this.close());
-		install.addEventListener("click", async () => {
+		install.addEventListener("click", () => {
 			if (loading || installing || !pathValid) return;
 			installing = true;
 			install.disabled = true;
 			errorEl.empty();
-			try {
-				const path = await installer.install(folder, writeInstructions ? instruction.getValue() : null);
-				new Notice(t("agentSkill.installed", { path }));
-				this.close();
-			} catch (error) {
-				showError(error);
-			} finally {
-				installing = false;
-				install.disabled = !pathValid;
-			}
+			void installer.install(folder, writeInstructions ? instruction.getValue() : null)
+				.then((path) => {
+					new Notice(t("agentSkill.installed", { path }));
+					this.close();
+				})
+				.catch(showError)
+				.finally(() => {
+					installing = false;
+					install.disabled = !pathValid;
+				});
 		});
 	}
 

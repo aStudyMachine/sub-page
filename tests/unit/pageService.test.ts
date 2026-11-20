@@ -1,5 +1,7 @@
 import { ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
 import { describe, expect, it, vi } from "vitest";
+
+vi.stubGlobal("window", globalThis);
 import { PageService } from "../../src/core/pageService";
 import { PageId } from "../../src/models/pageId";
 import { DEFAULT_SETTINGS, migrateSettings } from "../../src/models/settings";
@@ -27,6 +29,15 @@ describe("自动还原无子页面的笔记", () => {
 	it("旧设置默认开启，保留明确关闭的设置", () => {
 		expect(migrateSettings({}).settings.collapseEmptyParents).toBe(true);
 		expect(migrateSettings({ collapseEmptyParents: false }).settings.collapseEmptyParents).toBe(false);
+	});
+
+	it("修正旧设置中的无效选项并保留合法列表成员", () => {
+		const stored = { ...DEFAULT_SETTINGS, defaultSort: "invalid", expandedIds: ["父页面", 10] };
+		expect(migrateSettings(stored)).toMatchObject({
+			settings: { defaultSort: "name", expandedIds: ["父页面"] },
+			changed: true,
+		});
+		expect(migrateSettings(DEFAULT_SETTINGS).changed).toBe(false);
 	});
 
 	it("启动时还原已有配对，保留手动排序", async () => {

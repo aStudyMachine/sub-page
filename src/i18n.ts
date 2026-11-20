@@ -31,7 +31,7 @@ const ZH: Record<string, string> = {
 	"cmd.revealCurrent": "在子页面面板中定位当前页面",
 	"notice.indexing": "正在建立页面索引…",
 	"notice.diagnosticsCopied": "诊断信息已复制到剪贴板",
-	"notice.diagnosticsConsole": "剪贴板不可用，诊断信息已输出到开发者控制台",
+	"notice.diagnosticsManualCopy": "剪贴板不可用，请手动复制诊断信息",
 	"hint.folderNote": "检测到 Folder Note 类插件。它也把「同名笔记 + 目录」当成一层页面，同时启用会让同一份结构被两边各改一次。建议只留一个。",
 
 	"menu.newChild": "新建子页面",
@@ -80,6 +80,8 @@ const ZH: Record<string, string> = {
 	"notice.rootMissing": "页面根目录不存在：{path}",
 	"notice.rebuilt": "已重建索引：{count} 个页面",
 	"notice.linkCopied": "已复制页面链接",
+	"notice.linkMissing": "页面已移动或删除，无法复制链接",
+	"notice.linkCopyFailed": "无法写入剪贴板",
 	"notice.structureOk": "页面结构正常",
 
 	"error.invalidName": "名称不合法",
@@ -180,7 +182,7 @@ const EN: Record<string, string> = {
 	"cmd.revealCurrent": "Reveal current page in sub page panel",
 	"notice.indexing": "Building the page index…",
 	"notice.diagnosticsCopied": "Diagnostics copied to the clipboard",
-	"notice.diagnosticsConsole": "Clipboard unavailable; diagnostics printed to the developer console",
+	"notice.diagnosticsManualCopy": "Clipboard unavailable. Copy diagnostics manually.",
 	"hint.folderNote": "A folder-note plugin is enabled. It also treats a note plus its same-named folder as one page, so the two will keep writing over each other. Keep only one of them.",
 
 	"menu.newChild": "New sub page",
@@ -230,6 +232,8 @@ const EN: Record<string, string> = {
 	"notice.rootMissing": "Page root does not exist: {path}",
 	"notice.rebuilt": "Index rebuilt: {count} page(s)",
 	"notice.linkCopied": "Page link copied",
+	"notice.linkMissing": "The page was moved or deleted",
+	"notice.linkCopyFailed": "Unable to write to the clipboard",
 	"notice.structureOk": "Page structure looks fine",
 
 	"error.invalidName": "Invalid name",

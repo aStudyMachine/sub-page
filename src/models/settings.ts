@@ -43,29 +43,31 @@ export interface MigrationResult {
  * 只做「字段名 → 新字段名」「缺省值补齐」这类无信息损失的迁移；不猜用户意图。
  */
 export function migrateSettings(raw: unknown): MigrationResult {
-	const input = (raw ?? {}) as Record<string, unknown>;
-	const settings: SubPageSettings = { ...DEFAULT_SETTINGS };
-	let changed = false;
-
-	for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof SubPageSettings)[]) {
-		const value = input[key];
-		if (value === undefined) {
-			changed = true;
-			continue;
-		}
-		if (Array.isArray(DEFAULT_SETTINGS[key])) {
-			if (Array.isArray(value)) {
-				(settings as unknown as Record<string, unknown>)[key] = value.filter((item) => typeof item === "string");
-			} else {
-				changed = true;
-			}
-			continue;
-		}
-		if (typeof value === typeof DEFAULT_SETTINGS[key]) {
-			(settings as unknown as Record<string, unknown>)[key] = value;
-		} else {
-			changed = true;
-		}
-	}
+	const input = raw && typeof raw === "object" && !Array.isArray(raw)
+		? raw as Record<string, unknown>
+		: {};
+	const settings: SubPageSettings = {
+		pageRoot: typeof input.pageRoot === "string" ? input.pageRoot : DEFAULT_SETTINGS.pageRoot,
+		defaultView: input.defaultView === "card" ? "card" : DEFAULT_SETTINGS.defaultView,
+		defaultSort: input.defaultSort === "created" || input.defaultSort === "modified" || input.defaultSort === "manual"
+			? input.defaultSort : DEFAULT_SETTINGS.defaultSort,
+		showEmptyFolders: typeof input.showEmptyFolders === "boolean" ? input.showEmptyFolders : DEFAULT_SETTINGS.showEmptyFolders,
+		collapseEmptyParents: typeof input.collapseEmptyParents === "boolean" ? input.collapseEmptyParents : DEFAULT_SETTINGS.collapseEmptyParents,
+		confirmDelete: typeof input.confirmDelete === "boolean" ? input.confirmDelete : DEFAULT_SETTINGS.confirmDelete,
+		templatePath: typeof input.templatePath === "string" ? input.templatePath : DEFAULT_SETTINGS.templatePath,
+		language: input.language === "zh" || input.language === "en" ? input.language : DEFAULT_SETTINGS.language,
+		expandedIds: stringList(input.expandedIds),
+		excludedFolders: stringList(input.excludedFolders),
+		debugLog: typeof input.debugLog === "boolean" ? input.debugLog : DEFAULT_SETTINGS.debugLog,
+	};
+	const changed = Object.entries(settings).some(([key, next]) => {
+		const previous = input[key];
+		if (Array.isArray(next)) return !Array.isArray(previous) || next.length !== previous.length;
+		return next !== previous;
+	});
 	return { settings, changed };
+}
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item: unknown): item is string => typeof item === "string") : [];
 }

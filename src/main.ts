@@ -1,4 +1,4 @@
-import { App, Notice, Platform, Plugin, TFile, apiVersion, getLanguage, setTooltip } from "obsidian";
+import { App, Modal, Notice, Platform, Plugin, TFile, apiVersion, getLanguage, setTooltip } from "obsidian";
 import { ObsidianVaultAdapter } from "./adapters/obsidianVaultAdapter";
 import { PageService } from "./core/pageService";
 import { SubPageSettingTab } from "./settings";
@@ -65,10 +65,6 @@ export default class SubPagePlugin extends Plugin {
 		);
 	}
 
-	async onunload(): Promise<void> {
-		await this.saveSettings();
-	}
-
 	/** 首扫可能要几百毫秒；慢到用户会察觉时才提示，扫完立刻撤掉。 */
 	private async startWithProgress(): Promise<void> {
 		// 用对象承着：赋值发生在定时器回调里，TS 的控制流分析看不到，
@@ -88,7 +84,7 @@ export default class SubPagePlugin extends Plugin {
 	// ------------------------------------------------------------ 生命周期
 
 	async loadSettings(): Promise<void> {
-		const stored = await this.loadData();
+		const stored: unknown = await this.loadData();
 		const { settings, changed } = migrateSettings(stored);
 		this.settings = settings;
 		this.refreshLanguage();
@@ -254,11 +250,11 @@ export default class SubPagePlugin extends Plugin {
 		try {
 			await navigator.clipboard.writeText(text);
 			new Notice(this.t("notice.diagnosticsCopied"), 6000);
-		} catch (error) {
-			// 剪贴板不可用（权限 / 非 https）时退成控制台输出，至少还能拿到。
-			console.warn("[sub-page] 剪贴板不可用，诊断信息输出到控制台", error);
-			console.info(text);
-			new Notice(this.t("notice.diagnosticsConsole"), 6000);
+		} catch {
+			const modal = new Modal(this.app);
+			modal.setTitle(this.t("notice.diagnosticsManualCopy"));
+			modal.contentEl.createEl("pre", { text });
+			modal.open();
 		}
 	}
 
