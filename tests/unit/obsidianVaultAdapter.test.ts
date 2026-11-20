@@ -51,6 +51,18 @@ it("宿主先返回时，等到原笔记实际移出才结束重命名", async (
 	expect(done).toHaveBeenCalledTimes(1);
 });
 
+it("重命名目录也由 FileManager 更新子页面的链接", async () => {
+	const folder = Object.assign(new TFolder(), { path: "项目" });
+	const renameFile = vi.fn(async (target: TFolder, path: string) => { target.path = path; });
+	const adapter = new ObsidianVaultAdapter({
+		vault: { getAbstractFileByPath: () => folder },
+		fileManager: { renameFile },
+	} as unknown as App);
+
+	await adapter.renameFolder("项目", "新项目");
+	expect(renameFile).toHaveBeenCalledWith(folder, "新项目");
+});
+
 it("清理空目录时检查磁盘隐藏文件，并使用库内回收站", async () => {
 	const folder = new TFolder();
 	const trash = vi.fn();
