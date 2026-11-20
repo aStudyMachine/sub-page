@@ -4,11 +4,17 @@
 
 Browse and organize your Obsidian notes as nested pages in a sidebar. Add the same child pages to a note as a list or a card grid. Sub Page can show your existing vault as a tree as soon as you open it.
 
+![Obsidian showing the Studio Atlas page tree on the left and four child-page cards in the note on the right](docs/screenshots/demo-overview.png)
+
+Try it with the [Studio Atlas example vault](demo-vault/).
+
 ## What you can do
 
 - **Browse and search your page tree** alongside Obsidian’s file explorer. Click a parent page’s title to open the note and expand or collapse its children. Click its icon to toggle the list on its own.
 - **Create and organize pages** from the sidebar. Use **+** to create a page, or right-click a page and choose **New sub page**. On desktop, drag to the center of a row to make a page its child, or to the top or bottom edge to reorder it. On mobile, long-press a page to open its menu and use **Move up** or **Move down**.
 - **Show child pages inside a note** as a list or card grid, with optional icons and descriptions.
+
+![The sidebar highlights a search result for Interview while the Research note shows its children as a list](docs/screenshots/demo-list-and-search.png)
 
 ## Get started
 
