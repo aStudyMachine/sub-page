@@ -38,7 +38,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.rename"))
 				.setIcon("pencil")
-				.onClick(() => new RenamePageModal(plugin.app, plugin, node).open()),
+				.onClick(() => openRename(plugin, node)),
 		);
 		menu.addItem((item) =>
 			item
@@ -134,6 +134,10 @@ export function openCreate(plugin: SubPagePlugin, parentId: PageId | null): void
 		defaultTitle: plugin.t("modal.create.untitled"),
 		onCreated: (id) => void openPage(plugin, plugin.service.getNode(id)),
 	}).open();
+}
+
+export function openRename(plugin: SubPagePlugin, node: PageNode): void {
+	new RenamePageModal(plugin.app, plugin, node).open();
 }
 
 export async function pair(plugin: SubPagePlugin, node: PageNode): Promise<void> {

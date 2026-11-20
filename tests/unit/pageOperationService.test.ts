@@ -103,28 +103,34 @@ describe("新建入口的目标位置", () => {
 		expect(menu.openCreate).toHaveBeenCalledExactlyOnceWith(target, "modal.create.untitled");
 	});
 
-	it("正文块在所属页面下新建子页面，使用页面 ID 定位", async () => {
+	it.each([
+		{ sourcePath: "项目A/设计/设计.md", pageId: "项目A/设计", autoCollapse: true, action: "block.create" },
+		{ sourcePath: "首页.md", pageId: "首页.md", autoCollapse: true, action: "block.create" },
+		{ sourcePath: "首页.md", pageId: "首页.md", autoCollapse: false, action: "block.pair" },
+	])("正文块使用所属页面执行 $action（$sourcePath）", async ({ sourcePath, pageId, autoCollapse, action }) => {
 		const h = await harness(sampleVault());
-		const sourcePath = "项目A/设计/设计.md";
-		const page = h.index.getNode(id("项目A/设计"))!;
+		const page = h.index.getNode(id(pageId))!;
 		const processor = vi.fn<SubPagePlugin["registerMarkdownCodeBlockProcessor"]>();
 		const nodeForSourcePath = vi.fn((path: string) => path === sourcePath ? page : undefined);
+		const pairPage = vi.fn(async () => ({ ok: true }));
 		const plugin = {
 			app: {},
-			settings: DEFAULT_SETTINGS,
+			settings: { ...DEFAULT_SETTINGS, collapseEmptyParents: autoCollapse },
 			t: (key: string) => key,
+			loadTemplate: async () => "模板",
 			currentPage: () => h.index.getNode(id("首页.md")),
-			service: { nodeForSourcePath, getChildren: () => [] },
+			service: { nodeForSourcePath, getChildren: () => [], operations: { pairPage } },
 			registerMarkdownCodeBlockProcessor: processor,
 			registerBlockRefresher: vi.fn(),
 		} as unknown as SubPagePlugin;
 		const addEventListener = vi.fn<(event: string, listener: () => void) => void>();
+		const createButton = vi.fn(() => ({ addEventListener }));
 		const el = {
 			addClass: vi.fn(),
 			empty: vi.fn(),
 			createDiv: () => ({
 				createSpan: vi.fn(),
-				createEl: () => ({ addEventListener }),
+				createEl: createButton,
 			}),
 		} as unknown as HTMLElement;
 		const ctx = { sourcePath, addChild: vi.fn() } as unknown as MarkdownPostProcessorContext;
@@ -134,10 +140,17 @@ describe("新建入口的目标位置", () => {
 		expect(language).toBe("subpages");
 		render("", el, ctx);
 		expect(nodeForSourcePath).toHaveBeenCalledWith(sourcePath);
+		expect(createButton).toHaveBeenCalledWith("button", expect.objectContaining({ text: action }));
 		const [event, create] = addEventListener.mock.calls[0]!;
 		expect(event).toBe("click");
 		create();
-		expect(menu.openCreate).toHaveBeenCalledExactlyOnceWith("项目A/设计", "modal.create.untitled");
+		if (action === "block.pair") {
+			await vi.waitFor(() => expect(pairPage).toHaveBeenCalledExactlyOnceWith(pageId, "模板"));
+			expect(menu.openCreate).not.toHaveBeenCalled();
+		} else {
+			expect(menu.openCreate).toHaveBeenCalledExactlyOnceWith(pageId, "modal.create.untitled");
+			expect(pairPage).not.toHaveBeenCalled();
+		}
 	});
 });
 

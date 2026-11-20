@@ -1,11 +1,11 @@
-import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice } from "obsidian";
+import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
 import type SubPagePlugin from "../main";
 import { PageNode } from "../models/pageNode";
 import { PageMetadata } from "../models/pageMetadata";
 import { PageId } from "../models/pageId";
 import { parseSubPageBlock, SubPageBlockConfig } from "../utils/subPageConfigParser";
 import { renderPageIcon } from "../components/pageIcon";
-import { openCreate, openPage } from "../components/pageContextMenu";
+import { openCreate, openPage, pair } from "../components/pageContextMenu";
 
 export const SUBPAGES_LANGUAGE = "subpages";
 
@@ -76,7 +76,7 @@ function renderBlock(
 			el.createDiv({ cls: "sp-block-note", text: plugin.t("block.notAPage") });
 			return;
 		}
-		// 叶子页面想列子页面，缺的是目录而不是内容 —— 直接给出补齐动作，而不是只说「不行」。
+		// 开启自动还原时，叶子页面要在添加首个子页面时配对，避免空目录立刻被还原。
 		if (node.kind !== "parent") {
 			const box = el.createDiv({ cls: "sp-block-empty" });
 			box.createSpan({ text: plugin.t("block.notParent") });
@@ -85,13 +85,8 @@ function renderBlock(
 				create.addEventListener("click", () => openCreate(plugin, node.id));
 				return;
 			}
-			const pair = box.createEl("button", { text: plugin.t("block.pair"), cls: "mod-cta" });
-			pair.addEventListener("click", async () => {
-				const template = await plugin.loadTemplate();
-				const result = await plugin.service.operations.pairPage(node.id, template);
-				if (!result.ok) new Notice(result.message);
-				else if (result.warning) new Notice(result.warning);
-			});
+			const pairButton = box.createEl("button", { text: plugin.t("block.pair"), cls: "mod-cta" });
+			pairButton.addEventListener("click", () => void pair(plugin, node));
 			return;
 		}
 		const children = sortChildren(plugin.service.getChildren(node.id), config.sort);

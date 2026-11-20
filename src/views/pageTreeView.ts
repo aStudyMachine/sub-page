@@ -3,7 +3,7 @@ import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import type SubPagePlugin from "../main";
 import { buildRow } from "../components/treeRow";
-import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, requestDelete } from "../components/pageContextMenu";
+import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, openRename, requestDelete } from "../components/pageContextMenu";
 import { createDragController } from "../components/dragController";
 import { childKey, isDescendantId } from "../core/pageOperationService";
 import { expandAncestors, flattenTree, navigate, pruneExpanded } from "./treeState";
@@ -262,15 +262,6 @@ export class PageTreeView extends ItemView {
 		this.render();
 	}
 
-	private openRename(node: PageNode): void {
-		if (node.kind === "group" && !node.filePath) {
-			// 分组目录也能改名（它就是一个目录），走同一个服务。
-		}
-		void import("../modals/pageModals").then(({ RenamePageModal }) => {
-			new RenamePageModal(this.app, this.plugin, node).open();
-		});
-	}
-
 	private onKeyDown(event: KeyboardEvent): void {
 		const map: Record<string, "up" | "down" | "left" | "right" | "home" | "end"> = {
 			ArrowUp: "up",
@@ -303,7 +294,7 @@ export class PageTreeView extends ItemView {
 			void openPage(this.plugin, node);
 		} else if (event.key === "F2") {
 			event.preventDefault();
-			this.openRename(node);
+			openRename(this.plugin, node);
 		} else if (event.key === "Delete" || event.key === "Backspace") {
 			event.preventDefault();
 			void requestDelete(this.plugin, node);
