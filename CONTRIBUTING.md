@@ -44,6 +44,8 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 
 `FakeVault` 用来测试扫描、文件操作、排序和事件合并。侧栏和正文入口的测试使用 Obsidian API 模拟，覆盖目标页面、可见行和快捷键接线。宿主界面的样式、布局和真实拖放用下面的样例库验收。
 
+[Studio Atlas 验收矩阵](docs/demo-vault.md) 使用 Git 管理的展示库，覆盖截图、写操作、设置、诊断和兼容性场景。
+
 ## 手动验收清单
 
 每次改到界面或写操作，按这条序列走一遍。全程约 15 分钟。

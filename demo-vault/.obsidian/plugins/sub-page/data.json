@@ -1,0 +1,18 @@
+{
+  "pageRoot": "",
+  "defaultView": "list",
+  "defaultSort": "name",
+  "showEmptyFolders": false,
+  "collapseEmptyParents": false,
+  "confirmDelete": true,
+  "templatePath": "",
+  "language": "en",
+  "expandedIds": [
+    "Studio Atlas",
+    "Studio Atlas/Research"
+  ],
+  "excludedFolders": [
+    "_assets"
+  ],
+  "debugLog": false
+}
