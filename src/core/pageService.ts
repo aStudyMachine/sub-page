@@ -13,6 +13,7 @@ import { collectStructureIssues, StructureReport } from "./structureIssues";
 
 export interface PageServiceDeps {
 	adapter: VaultAdapter;
+	orderPath: string;
 	settings: () => SubPageSettings;
 	/** 索引变化时通知界面重绘。 */
 	onChange: (reason: string) => void;
@@ -47,18 +48,21 @@ export class PageService {
 	private refreshing: Promise<void> | null = null;
 	private queued = false;
 	private started = false;
+	private readonly failedCollapses = new Set<string>();
 
 	constructor(private readonly deps: PageServiceDeps) {
-		this.order = new PageOrderStore(deps.adapter, deps.settings().pageRoot);
+		this.order = new PageOrderStore(deps.adapter, deps.settings().pageRoot, deps.orderPath);
 		this.metadata = new PageMetadataReader(deps.adapter);
 		this.operations = new PageOperationService({
 			adapter: deps.adapter,
 			order: this.order,
 			getNode: (id) => this.index.getNode(id),
 			getChildren: (scope) => this.index.getChildren(scope),
-				getPageRoot: () => this.deps.settings().pageRoot,
-				refresh: () => this.refresh(),
-				renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
+			getPageRoot: () => this.deps.settings().pageRoot,
+			getExcludedFolders: () => this.deps.settings().excludedFolders,
+			collapseEmptyParents: () => this.deps.settings().collapseEmptyParents,
+			refresh: () => this.refresh(),
+			renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
 		});
 	}
 
@@ -85,14 +89,23 @@ export class PageService {
 		if (this.pending) clearTimeout(this.pending);
 		this.pending = null;
 		this.started = false;
+		this.failedCollapses.clear();
 	}
 
 	/** 页面根变了：顺序文件、索引、元数据缓存全部要跟着换。 */
 	async setPageRoot(pageRoot: string): Promise<void> {
 		const root = normalizePath(pageRoot);
 		if (root === this.index.pageRoot) return;
+		this.failedCollapses.clear();
 		this.order.setPageRoot(root);
 		this.metadata.clear();
+		await this.order.load();
+		if (this.order.problem) this.deps.onProblem?.(this.order.problem);
+		await this.refresh();
+	}
+
+	async rebuild(): Promise<void> {
+		this.failedCollapses.clear();
 		await this.order.load();
 		if (this.order.problem) this.deps.onProblem?.(this.order.problem);
 		await this.refresh();
@@ -120,11 +133,35 @@ export class PageService {
 	private async doRefresh(): Promise<void> {
 		const settings = this.deps.settings();
 		const started = Date.now();
-		const snapshot = await scan(this.deps.adapter, settings.pageRoot, {
+		const readSnapshot = () => scan(this.deps.adapter, settings.pageRoot, {
 			order: this.order.current,
 			excludedFolders: settings.excludedFolders,
 			showEmptyFolders: settings.showEmptyFolders,
 		});
+		let snapshot = await readSnapshot();
+		const candidates = new Set<string>();
+		if (settings.collapseEmptyParents) {
+			let rescan = false;
+			for (const node of snapshot.nodes.values()) {
+				if (node.kind !== "parent" || node.childIds.length > 0) continue;
+				const current = this.deps.settings();
+				if (!current.collapseEmptyParents || current.pageRoot !== settings.pageRoot) break;
+				candidates.add(node.folderPath);
+				if (this.failedCollapses.has(node.folderPath)) continue;
+				const result = await this.operations.collapseEmptyParent(node, settings.pageRoot);
+				if (result.ok || result.reason === "io-error") rescan = true;
+				if (result.ok && result.warning) this.deps.onProblem?.(result.warning);
+				if (!result.ok && result.reason === "io-error") {
+					// 回滚也会触发重扫，保留失败记录以免在同一空目录反复移动笔记。
+					this.failedCollapses.add(node.folderPath);
+					this.deps.onProblem?.(result.message);
+				}
+			}
+			if (rescan) snapshot = await readSnapshot();
+		}
+		for (const path of this.failedCollapses) {
+			if (!candidates.has(path)) this.failedCollapses.delete(path);
+		}
 		this.lastScanMs = Date.now() - started;
 		this.index.replace(snapshot);
 		const warnings = snapshot.warnings.filter((warning) => warning.kind !== "case-conflict");
@@ -133,6 +170,16 @@ export class PageService {
 	}
 
 	private handleEvent(event: VaultEvent): void {
+		if (this.order.matchesPath(event.path) || (event.oldPath && this.order.matchesPath(event.oldPath))) {
+			if (!this.order.isWriting) {
+				void this.order.reloadIfChanged().then((changed) => {
+					if (!changed || !this.started) return;
+					if (this.order.problem) this.deps.onProblem?.(this.order.problem);
+					this.scheduleRefresh();
+				});
+			}
+			return;
+		}
 		// frontmatter 可能刚被改过（图标 / 描述），缓存必须先失效，否则树会一直显示旧图标。
 		if (event.kind === "modify" || event.kind === "rename") {
 			this.metadata.forget(event.oldPath ?? event.path);
@@ -140,19 +187,8 @@ export class PageService {
 			// 视图自己还有一层「已经补过 metadata 的 id」缓存，靠这个数字知道该丢。
 			this.metadataEpoch += 1;
 		}
-		if (this.order.isWriting && event.path.toLowerCase().endsWith(".subpage-order.json")) return;
-		// 自己写的顺序文件不该触发整树重扫。
-		if (this.order.isWriting) return;
 		if (!this.touchesPageRoot(event)) return;
 		if (event.kind === "modify") {
-			if (this.isOrderFile(event.path)) {
-				// 同步盘把别处的顺序文件覆盖过来时必须跟随；而自己刚才写的那一份
-				// 常常会因为事件延迟送达而走到这里，内容没变就不该白白重扫一遍。
-				void this.order.reloadIfChanged().then((changed) => {
-					if (changed) this.scheduleRefresh();
-				});
-				return;
-			}
 			// 树形来自目录结构、标题来自文件名，正文与 frontmatter 都改不动它。
 			// 若是全量重扫，一万页的库里每存一次盘都要重建一整棵树。
 			// 只有「索引里没有的 md」例外：同步盘直接落地的新文件常常只发 modify 不发 create。
@@ -162,10 +198,6 @@ export class PageService {
 			}
 		}
 		this.scheduleRefresh();
-	}
-
-	private isOrderFile(path: string): boolean {
-		return path.toLowerCase().endsWith("/.subpage-order.json") || path.toLowerCase() === ".subpage-order.json";
 	}
 
 	private touchesPageRoot(event: VaultEvent): boolean {

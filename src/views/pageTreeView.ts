@@ -3,7 +3,7 @@ import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import type SubPagePlugin from "../main";
 import { buildRow } from "../components/treeRow";
-import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, requestDelete } from "../components/pageContextMenu";
+import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, openRename, requestDelete } from "../components/pageContextMenu";
 import { createDragController } from "../components/dragController";
 import { childKey, isDescendantId } from "../core/pageOperationService";
 import { expandAncestors, flattenTree, navigate, pruneExpanded } from "./treeState";
@@ -26,6 +26,7 @@ export class PageTreeView extends ItemView {
 	private searchEl!: HTMLInputElement;
 	private searchTerm = "";
 	private focusId: PageId | null = null;
+	private lastOpenedFile: TFile | null = null;
 	private metadataCache = new Map<string, PageMetadata>();
 	private metadataEpoch = -1;
 	private searchTimer: number | null = null;
@@ -63,8 +64,9 @@ export class PageTreeView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.buildChrome();
+		this.lastOpenedFile = this.app.workspace.getActiveFile();
 		this.render();
-		this.registerEvent(this.app.workspace.on("file-open", () => this.highlightCurrent()));
+		this.registerEvent(this.app.workspace.on("file-open", (file) => this.onFileOpen(file)));
 		// 页面模型是「任意笔记都是页面」，这件事光看树看不出来 —— 第一次打开说一遍。
 		if (!hintSeen(this.app, "welcome")) {
 			markHintSeen(this.app, "welcome");
@@ -127,11 +129,6 @@ export class PageTreeView extends ItemView {
 		this.drag.attach(this.listEl);
 
 		this.emptyEl = container.createDiv({ cls: "sp-empty" });
-
-		const footer = container.createDiv({ cls: "sp-footer" });
-		const newButton = footer.createEl("button", { cls: "sp-new-button" });
-		newButton.setText(this.plugin.t("action.newPage"));
-		newButton.addEventListener("click", () => openCreate(this.plugin, null));
 	}
 
 	// ------------------------------------------------------------ 渲染
@@ -165,7 +162,6 @@ export class PageTreeView extends ItemView {
 			this.appendRow(node, { expanded: this.expanded.has(node.id), current: node.id === current });
 		}
 		this.renderEmptyState();
-		this.highlightCurrent();
 		void this.ensureMetadata(this.rows);
 	}
 
@@ -217,10 +213,6 @@ export class PageTreeView extends ItemView {
 		});
 		this.listEl.appendChild(row);
 		row.addEventListener("click", (event) => this.onRowClick(event, node));
-		row.addEventListener("dblclick", (event) => {
-			event.preventDefault();
-			this.openRename(node);
-		});
 		row.addEventListener("contextmenu", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -254,14 +246,12 @@ export class PageTreeView extends ItemView {
 
 	private onRowClick(event: MouseEvent, node: PageNode): void {
 		this.focusId = node.id;
-		this.setFocusRing(node.id);
 		const target = event.target as HTMLElement;
-		const clickedBranchIcon = node.childIds.length > 0 && !this.searchTerm.trim() && target.closest(".sp-icon");
-		if (node.kind === "group" || clickedBranchIcon) {
-			this.toggle(node);
-			return;
-		}
-		void openPage(this.plugin, node);
+		const canToggle = node.childIds.length > 0 && !this.searchTerm.trim();
+		const opensNote = node.kind !== "group" && !(canToggle && target.closest(".sp-icon"));
+		if (node.kind === "group" || (node.kind === "parent" && canToggle)) this.toggle(node);
+		this.setFocusRing(node.id);
+		if (opensNote) void openPage(this.plugin, node);
 	}
 
 	private toggle(node: PageNode): void {
@@ -270,15 +260,6 @@ export class PageTreeView extends ItemView {
 		else this.expanded.add(node.id);
 		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
-	}
-
-	private openRename(node: PageNode): void {
-		if (node.kind === "group" && !node.filePath) {
-			// 分组目录也能改名（它就是一个目录），走同一个服务。
-		}
-		void import("../modals/pageModals").then(({ RenamePageModal }) => {
-			new RenamePageModal(this.app, this.plugin, node).open();
-		});
 	}
 
 	private onKeyDown(event: KeyboardEvent): void {
@@ -313,7 +294,7 @@ export class PageTreeView extends ItemView {
 			void openPage(this.plugin, node);
 		} else if (event.key === "F2") {
 			event.preventDefault();
-			this.openRename(node);
+			openRename(this.plugin, node);
 		} else if (event.key === "Delete" || event.key === "Backspace") {
 			event.preventDefault();
 			void requestDelete(this.plugin, node);
@@ -351,11 +332,13 @@ export class PageTreeView extends ItemView {
 	// ------------------------------------------------------------ 拖拽落点
 
 	private moveAsChild(draggedId: string, targetId: string | null): void {
-		// 落到叶子页面上没有意义（叶子没有目录，装不下子页面），按「成为它的同级」处理。
-		const target = targetId ? this.service.getNode(targetId as PageId) : undefined;
-		const parentId = target && target.kind === "leaf" ? target.parentId : (targetId as PageId | null);
-		void this.service.operations.movePage(draggedId as PageId, parentId).then((result) => {
-			if (!result.ok) new Notice(result.message);
+		void this.service.operations.movePage(draggedId as PageId, targetId as PageId | null).then((result) => {
+			if (!result.ok) {
+				new Notice(result.message);
+				return;
+			}
+			if (result.warning) new Notice(result.warning);
+			if (targetId && this.expandPageAncestors(result.value)) this.render();
 		});
 	}
 
@@ -392,24 +375,25 @@ export class PageTreeView extends ItemView {
 
 	// ------------------------------------------------------------ 当前页面
 
-	private currentPageId(): PageId | null {
-		const file = this.app.workspace.getActiveFile();
+	private currentPageId(file = this.app.workspace.getActiveFile()): PageId | null {
 		if (!(file instanceof TFile)) return null;
 		return this.service.nodeForFilePath(file.path)?.id ?? null;
 	}
 
-	/** 打开文件时：高亮它，并把它的祖先全部展开。 */
-	highlightCurrent(): void {
-		const id = this.currentPageId();
-		if (!id) return;
-		const ancestors = this.service.getAncestors(id).map((node) => node.id as string);
-		const before = this.expanded.size;
-		this.expanded = expandAncestors(this.expanded, ancestors);
-		if (this.expanded.size !== before) {
-			void this.plugin.setExpandedIds(this.expanded);
-			this.render();
-			return;
-		}
+	private expandPageAncestors(id: PageId): boolean {
+		const ancestors = this.service.getAncestors(id).map((node) => node.id);
+		const expanded = expandAncestors(this.expanded, ancestors);
+		if (expanded.size === this.expanded.size) return false;
+		this.expanded = expanded;
+		return true;
+	}
+
+	/** 切换文件时才自动展开，保留用户对当前文件所在目录的折叠操作。 */
+	private onFileOpen(file: TFile | null): void {
+		if (file === this.lastOpenedFile) return;
+		this.lastOpenedFile = file;
+		const id = this.currentPageId(file);
+		if (id && this.expandPageAncestors(id)) this.render();
 		for (const row of Array.from(this.listEl.querySelectorAll<HTMLElement>(".sp-row"))) {
 			row.toggleClass("is-current", row.getAttribute("data-id") === id);
 		}
@@ -433,20 +417,13 @@ export class PageTreeView extends ItemView {
 		this.render();
 	}
 
-	/**
-	 * 命令面板用：把当前文件定位出来。
-	 * 只调 highlightCurrent 不够 —— 它要求树已经展开过祖先链，
-	 * 面板是新开的时候整个过程还没跑过。
-	 */
+	/** 主动定位会退出搜索并展开当前文件的祖先链。 */
 	revealCurrent(): void {
 		const id = this.currentPageId();
 		if (!id) return;
 		this.searchTerm = "";
 		if (this.searchEl) this.searchEl.value = "";
-		this.expanded = expandAncestors(
-			this.expanded,
-			this.service.getAncestors(id).map((node) => node.id as string),
-		);
+		this.expandPageAncestors(id);
 		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
 		this.setFocusRing(id);

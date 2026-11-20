@@ -6,7 +6,7 @@ import {
 	VaultAdapter,
 	VaultEvent,
 } from "./vaultAdapter";
-import { normalizePath } from "../utils/pathUtils";
+import { dirname, normalizePath } from "../utils/pathUtils";
 
 /**
  * 真实宿主适配器：整个插件里唯一 import obsidian 文件系统 API 的地方。
@@ -42,6 +42,20 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		return normalized === "" ? "/" : obsidianNormalize(normalized);
 	}
 
+	async listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }> {
+		return this.app.vault.adapter.list(normalizePath(path));
+	}
+
+	async trashEmptyFolder(path: string): Promise<boolean> {
+		const folder = this.app.vault.getAbstractFileByPath(this.key(path));
+		if (!(folder instanceof TFolder)) return false;
+		const { files, folders } = await this.listFolderContents(path);
+		if (files.length || folders.length) return false;
+		// 库内回收站避免使用可能永久删除目录的宿主偏好。
+		await this.app.vault.trash(folder, false);
+		return true;
+	}
+
 	async exists(path: string): Promise<boolean> {
 		const normalized = normalizePath(path);
 		if (normalized === "") return true;
@@ -49,25 +63,67 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	}
 
 	async readText(path: string): Promise<string | null> {
-		const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
-		if (!(file instanceof TFile)) return null;
-		try {
-			// cachedRead 会走宿主的文件缓存：同一文件反复读（元数据、正文块）不重复落盘。
-			return await this.app.vault.cachedRead(file);
-		} catch {
-			return null;
-		}
+		const normalized = normalizePath(path);
+		const adapter = this.app.vault.adapter;
+		// 插件配置目录和点号开头的旧顺序文件都在 Vault 文件索引之外。
+		return (await adapter.exists(normalized)) ? adapter.read(normalized) : null;
 	}
 
 	async writeText(path: string, content: string): Promise<void> {
-		const normalized = normalizePath(path);
-		const file = this.app.vault.getAbstractFileByPath(normalized);
-		if (file instanceof TFile) {
-			// process 保证写入与宿主的其它写入不互相覆盖。
-			await this.app.vault.process(file, () => content);
-			return;
+		await this.app.vault.adapter.write(normalizePath(path), content);
+	}
+
+	async writeVerifiedText(path: string, content: string, previous: string | null, keepRecoveryCopy = false): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		const target = normalizePath(path);
+		const staged = `${target}.write-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+		const backup = keepRecoveryCopy && previous !== null ? `${staged}.backup` : null;
+		let writingExistingFile = false;
+		let retainBackup = false;
+		try {
+			await adapter.write(staged, content);
+			if (await adapter.read(staged) !== content) throw new Error(`文件写入校验失败：${target}`);
+			if (previous === null) {
+				if (await adapter.exists(target)) throw new Error(`文件已变更：${target}`);
+				await adapter.rename(staged, target);
+			} else {
+				if (backup !== null) {
+					await adapter.write(backup, previous);
+					if (await adapter.read(backup) !== previous) throw new Error(`备份校验失败：${target}`);
+				}
+				await adapter.process(target, (current) => {
+					if (current !== previous) throw new Error(`文件已变更：${target}`);
+					writingExistingFile = true;
+					return content;
+				});
+			}
+			if (await adapter.read(target) !== content) throw new Error(`文件写入校验失败：${target}`);
+		} catch (error) {
+			// 宿主可能已经开始覆盖原文件，保留原文以备恢复。
+			if (backup !== null && writingExistingFile) {
+				retainBackup = true;
+				throw new Error(`${String(error)}（原文备份：${backup}）`);
+			}
+			throw error;
+		} finally {
+			await adapter.remove(staged).catch(() => undefined);
+			if (backup !== null && !retainBackup) await adapter.remove(backup).catch(() => undefined);
 		}
-		await this.app.vault.create(normalized, content);
+	}
+
+	async ensureConfigFolders(path: string): Promise<void> {
+		const target = normalizePath(path);
+		if (!target) return;
+		const adapter = this.app.vault.adapter;
+		const existing = await adapter.stat(target);
+		if (existing?.type === "folder") return;
+		if (existing) throw new Error(`同名文件占用了目录路径：${target}`);
+		await this.ensureConfigFolders(dirname(target));
+		try {
+			await adapter.mkdir(target);
+		} catch (error) {
+			if ((await adapter.stat(target))?.type !== "folder") throw error;
+		}
 	}
 
 	async createFolder(path: string): Promise<void> {
@@ -93,10 +149,26 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	}
 
 	async renameFile(from: string, to: string): Promise<void> {
-		const target = this.app.vault.getAbstractFileByPath(normalizePath(from));
+		const vault = this.app.vault;
+		const target = vault.getAbstractFileByPath(normalizePath(from));
 		if (!(target instanceof TFile)) throw new Error(`文件不存在：${from}`);
-		// 必须走 fileManager：它会同步更新所有指向这个笔记的 [[链接]]。
-		await this.app.fileManager.renameFile(target, normalizePath(to));
+		const destination = normalizePath(to);
+		await this.app.fileManager.renameFile(target, destination);
+		if (target.path === destination) return;
+
+		// 已有链接更新时，宿主可能只将重命名入队就返回。
+		await new Promise<void>((resolve, reject) => {
+			const ref = vault.on("rename", (file) => {
+				if (file !== target || file.path !== destination) return;
+				clearTimeout(timer);
+				vault.offref(ref);
+				resolve();
+			});
+			const timer = setTimeout(() => {
+				vault.offref(ref);
+				reject(new Error(`未能确认笔记已移至：${destination}`));
+			}, 10_000);
+		});
 	}
 
 	async trash(path: string, system = true): Promise<void> {

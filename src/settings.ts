@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, SettingDefinitionItem, TFile } from "obsidian";
 import type SubPagePlugin from "./main";
 import { EXCLUDED_FOLDER_DEFAULTS, SubPageSettings } from "./models/settings";
+import { AgentSkillModal } from "./modals/agentSkillModal";
 
 /**
  * 设置面板用 1.13 起的声明式定义（`getSettingDefinitions`），不用已废弃的 `display()`。
@@ -37,7 +38,7 @@ export class SubPageSettingTab extends PluginSettingTab {
 			this.subPage.refreshLanguage();
 			this.update();
 		}
-		if (key === "showEmptyFolders") await this.subPage.refreshIndex();
+		if (key === "showEmptyFolders" || key === "collapseEmptyParents") await this.subPage.refreshIndex();
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -86,6 +87,11 @@ export class SubPageSettingTab extends PluginSettingTab {
 						control: { type: "toggle", key: "confirmDelete" },
 					},
 					{
+						name: t("settings.collapseEmptyParents.name"),
+						desc: t("settings.collapseEmptyParents.desc"),
+						control: { type: "toggle", key: "collapseEmptyParents" },
+					},
+					{
 						name: t("settings.templatePath.name"),
 						desc: t("settings.templatePath.desc"),
 						control: {
@@ -117,6 +123,11 @@ export class SubPageSettingTab extends PluginSettingTab {
 						},
 					},
 				],
+			},
+			{
+				name: t("agentSkill.title"),
+				desc: t("agentSkill.settings"),
+				action: () => new AgentSkillModal(this.subPage).open(),
 			},
 			{
 				type: "group",

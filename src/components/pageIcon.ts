@@ -2,11 +2,11 @@ import { setIcon } from "obsidian";
 import { PageMetadata } from "../models/pageMetadata";
 import { NodeKind } from "../models/pageNode";
 
-/** 没有自定义图标时的兜底：靠形状区分「能放子页面」「只是分组」「普通页面」。 */
+/** 使用宿主图标，靠叠页、目录和单页的轮廓区分三种节点。 */
 const DEFAULT_ICON: Record<NodeKind, string> = {
-	parent: "📘",
-	group: "📁",
-	leaf: "📄",
+	parent: "files",
+	group: "folder",
+	leaf: "file",
 };
 
 const LUCIDE_PREFIX = "lucide:";
@@ -17,14 +17,17 @@ const LUCIDE_PREFIX = "lucide:";
  */
 export function renderPageIcon(el: HTMLElement, kind: NodeKind, metadata: PageMetadata): void {
 	el.empty();
-	el.removeClass("sp-icon-lucide");
+	el.removeClass("sp-icon-lucide", "sp-icon-default");
 	const icon = metadata.icon;
-	if (icon && icon.startsWith(LUCIDE_PREFIX)) {
-		setIcon(el, icon.slice(LUCIDE_PREFIX.length).trim());
-		// 侧栏的父页面图标同时是展开入口，宿主未渲染时仍需显示图标。
-		if (el.hasChildNodes()) el.addClass("sp-icon-lucide");
-		else el.setText(DEFAULT_ICON[kind]);
+	if (icon && !icon.startsWith(LUCIDE_PREFIX)) {
+		el.setText(icon);
 		return;
 	}
-	el.setText(icon ?? DEFAULT_ICON[kind]);
+	if (icon) setIcon(el, icon.slice(LUCIDE_PREFIX.length).trim());
+	// 父页面图标同时是展开入口，无效的自定义图标也需要保留可点击的轮廓。
+	if (!el.hasChildNodes()) {
+		setIcon(el, DEFAULT_ICON[kind]);
+		el.addClass("sp-icon-default");
+	}
+	el.addClass("sp-icon-lucide");
 }

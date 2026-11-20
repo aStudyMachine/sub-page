@@ -1,0 +1,21 @@
+{
+  "roots": {
+    "": {
+      "": [
+        "Studio Atlas",
+        "Reference",
+        "Practice"
+      ],
+      "Studio Atlas": [
+        "Research",
+        "Design",
+        "Delivery",
+        "Meeting notes.md"
+      ],
+      "Studio Atlas/Research": [
+        "Interview notes.md",
+        "Audience map.md"
+      ]
+    }
+  }
+}

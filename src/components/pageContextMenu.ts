@@ -28,7 +28,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.newChild"))
 				.setIcon("file-plus")
-				.onClick(() => openCreate(plugin, node.kind === "leaf" ? node.parentId : node.id)),
+				.onClick(() => openCreate(plugin, node.id)),
 		);
 		menu.addItem((item) =>
 			item.setTitle(t("menu.newSibling")).setIcon("files").onClick(() => openCreate(plugin, node.parentId)),
@@ -38,7 +38,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.rename"))
 				.setIcon("pencil")
-				.onClick(() => new RenamePageModal(plugin.app, plugin, node).open()),
+				.onClick(() => openRename(plugin, node)),
 		);
 		menu.addItem((item) =>
 			item
@@ -131,19 +131,26 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 export function openCreate(plugin: SubPagePlugin, parentId: PageId | null): void {
 	new CreatePageModal(plugin.app, plugin, {
 		parentId,
+		defaultTitle: plugin.t("modal.create.untitled"),
 		onCreated: (id) => void openPage(plugin, plugin.service.getNode(id)),
 	}).open();
+}
+
+export function openRename(plugin: SubPagePlugin, node: PageNode): void {
+	new RenamePageModal(plugin.app, plugin, node).open();
 }
 
 export async function pair(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 	const template = await plugin.loadTemplate();
 	const result = await plugin.service.operations.pairPage(node.id, template);
 	if (!result.ok) new Notice(result.message);
+	else if (result.warning) new Notice(result.warning);
 }
 
 export async function unpair(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 	const result = await plugin.service.operations.unpairPage(node.id);
 	if (!result.ok) new Notice(result.message);
+	else if (result.warning) new Notice(result.warning);
 }
 
 async function copyLink(plugin: SubPagePlugin, node: PageNode): Promise<void> {

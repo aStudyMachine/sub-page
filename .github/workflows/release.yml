@@ -9,6 +9,9 @@ on:
         description: 只构建并打印校验和
         type: boolean
         default: true
+      expected_checksums_digest:
+        description: 正式发布时填写 dry run 输出的 checksums_digest
+        type: string
 
 permissions:
   contents: write
@@ -21,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -31,14 +36,24 @@ jobs:
       - run: npm test
       - run: npm run build
 
-      # 版本三处必须一致，否则社区目录会显示旧版本号。
+      # 发布版本、兼容表和 npm 锁文件必须一致。
       - name: 版本一致性
         run: |
           MANIFEST=$(node -p "require('./manifest.json').version")
           PACKAGE=$(node -p "require('./package.json').version")
           VERSIONS=$(node -p "Object.keys(require('./versions.json')).pop()")
+          LOCK=$(node -p "require('./package-lock.json').version")
+          LOCK_ROOT=$(node -p "require('./package-lock.json').packages[''].version")
           echo "manifest=$MANIFEST package=$PACKAGE versions=$VERSIONS"
-          test "$MANIFEST" = "$PACKAGE" && test "$MANIFEST" = "$VERSIONS"
+          test "$MANIFEST" = "$PACKAGE" && test "$MANIFEST" = "$VERSIONS" &&
+            test "$MANIFEST" = "$LOCK" && test "$MANIFEST" = "$LOCK_ROOT"
+
+      - name: 核对发布标签
+        if: inputs.dry_run == false
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          TAG_COMMIT=$(git rev-parse "refs/tags/$VERSION^{commit}")
+          test "$TAG_COMMIT" = "$GITHUB_SHA"
 
       # 社区审阅会把这些当成 Error，本地先挡一遍。
       - name: 审阅守卫
@@ -54,10 +69,17 @@ jobs:
           test "$COUNT" -le 3
 
       - name: 校验和
+        env:
+          EXPECTED_CHECKSUMS_DIGEST: ${{ inputs.expected_checksums_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          for file in main.js manifest.json styles.css; do
-            echo "$(sha256sum "$file")"
-          done
+          sha256sum main.js manifest.json styles.css | tee "$RUNNER_TEMP/sub-page-checksums.txt"
+          digest=$(sha256sum "$RUNNER_TEMP/sub-page-checksums.txt" | cut -d' ' -f1)
+          echo "checksums_digest=$digest"
+          if [[ "$DRY_RUN" == "false" && "$digest" != "$EXPECTED_CHECKSUMS_DIGEST" ]]; then
+            echo "::error::发布产物与 dry run 的校验和不一致"
+            exit 1
+          fi
 
       - name: 打包
         if: inputs.dry_run == false
@@ -78,4 +100,4 @@ jobs:
         run: |
           VERSION=$(node -p "require('./manifest.json').version")
           gh release create "$VERSION" main.js manifest.json styles.css "sub-page-$VERSION.zip" \
-            --title "$VERSION" --notes-file "docs/release-notes/$VERSION.md"
+            --verify-tag --title "$VERSION" --notes-file "docs/release-notes/$VERSION.md"

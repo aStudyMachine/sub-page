@@ -3,7 +3,7 @@ import { PageOperationService } from "../../src/core/pageOperationService";
 import { collectStructureIssues } from "../../src/core/structureIssues";
 import { PageId } from "../../src/models/pageId";
 import { PageIndex } from "../../src/repository/pageIndex";
-import { PageOrderStore } from "../../src/repository/pageOrderStore";
+import { ORDER_FILE_NAME, PageOrderStore } from "../../src/repository/pageOrderStore";
 import { scan } from "../../src/repository/pageScanner";
 import { FakeVault, sampleVault } from "../fixtures/fakeVault";
 
@@ -17,7 +17,7 @@ const id = (value: string) => value as PageId;
 
 async function harness(vault: FakeVault, pageRoot = "") {
 	const index = new PageIndex();
-	const order = new PageOrderStore(vault, pageRoot);
+	const order = new PageOrderStore(vault, pageRoot, ORDER_FILE_NAME);
 	await order.load();
 	const refresh = async () => {
 		index.replace(await scan(vault, pageRoot, { order: order.current }));

@@ -12,12 +12,18 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 | `docs/adr/` | 5 篇架构决策（页面模型、路径 ID、分层边界、顺序文件、只用宿主 API） | 想改这几件事之前 |
 | `CONTRIBUTING.md` | 目录职责表、测试策略、手动验收清单、发布顺序 | 提 PR 之前 |
 | `docs/agent-lessons.md` | 跨会话的踩坑记录 | 踩到坑时先查，解决后补一条 |
+| `.agents/skills/sub-page-vault-deploy/SKILL.md` | 本地部署和验收流程 | 部署到 Obsidian 库或验证部署时读 |
 | `docs/perf-baseline.md` | 扫描耗时实测 | 讨论性能优化之前 |
 
 ## 两条硬约束
 
 1. **`release.yml` 用 `workflow_dispatch` 触发，而 `workflow_dispatch` 只有在 workflow 文件已存在于默认分支时才可用**。所以「先合 main」是发版的前置条件，不是可选项。
 2. **社区评审的 Error 级问题会让插件在社区目录里搜不到，而且同版本重发不会重跑评审**。修完必须再升一个版本号，不能靠重发原版本。
+
+## 分支约定
+
+- `dev` 是公共开发分支。开工前同步 `origin/dev`，小调整默认直接在 `dev` 提交并推送。
+- 较大的改动从 `dev` 建工作分支，验收后合回 `dev`。发布时将验收通过的内容从 `dev` 合入 `main`。
 
 ## 代码约定
 

@@ -6,6 +6,7 @@ export interface SubPageSettings {
 	defaultView: SubPageView;
 	defaultSort: SubPageSort;
 	showEmptyFolders: boolean;
+	collapseEmptyParents: boolean;
 	confirmDelete: boolean;
 	templatePath: string;
 	language: "auto" | "zh" | "en";
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: SubPageSettings = {
 	defaultView: "list",
 	defaultSort: "name",
 	showEmptyFolders: false,
+	collapseEmptyParents: true,
 	confirmDelete: true,
 	templatePath: "",
 	language: "auto",

@@ -1,6 +1,6 @@
 {
   "name": "sub-page",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Notion-style nested pages for Obsidian: a page tree over your existing vault, with sub-page blocks in notes.",
   "main": "main.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "deploy": "node scripts/deploy.mjs",
     "bump": "node scripts/bump-version.mjs",
     "gen-vault": "node scripts/gen-vault.mjs",
+    "demo:prepare": "node scripts/prepare-demo.mjs",
     "sandbox:reset": "node scripts/gen-sandbox.mjs"
   },
   "keywords": [

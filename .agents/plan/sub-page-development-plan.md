@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 1 | 目录里没有同名 md 就是「异常目录」，不显示 | 页面分三种：**父页面 / 叶子页面 / 分组目录**（见第二节） | 三个真实库（Knowledge 26 篇 / Marcus-WIKI 24 篇 / My-Resume 329 篇）**零配对目录**，按原规则树是空的 |
 | 2 | 排序不进 Properties，v1 按名称排序 | 顺序集中在 `<pageRoot>/.subpage-order.json` 一个文件 | 顺序无法从文件系统推导，必须持久化；分散写多个文件不符合「一处统一记录」 |
-| 3 | v0.1–v0.5 版本计划与 M1–M6 里程碑编号错位 | M0–M6 → 0.0.1–0.0.7，M7 → 1.0.0 | 一个里程碑一个可安装版本，对外只发 1.0.0 |
+| 3 | 里程碑编号与版本号 | 内部版从 0.0.1 起，首个公开版本为 0.1.0 | 见贡献指南的发布流程 |
 | 4 | subpages 块只承诺阅读视图 | 两种视图都渲染内容，交互（新建/改名/删除）只保证阅读视图 | Live Preview 下内容看得见比整块消失好；交互被编辑器吞掉时降级提示 |
 | 5 | v1 删除父页面默认删整个文件夹 | 删除父页面 = **只删它的 md**，目录与子页面保留并降级为分组目录；「连子页面一起删除」单独一个菜单项 | 有分组目录这个概念之后，删文件比删目录安全得多，误删不可逆 |
 | 6 | 未定义与原生文件浏览器的关系 | 两个树并存，提供命令「折叠原生文件浏览器」 | 不改 core 插件状态、不写 CSS 片段，社区评审无风险 |
@@ -210,7 +210,7 @@ node scripts/gen-vault.mjs 1000 && npm run perf
 
 任务：
 1. `core/pageOperationService.ts`，每个操作都是「校验 → 执行 → 刷新子树 → 失败补偿」四段式：
-   - `createPage(parentId, title, { withFolder })`：`createFolder` → `createFile`；失败时删掉已建空目录并抛出可读错误。父页面不存在时先补父 md。
+   - `createPage(parentId, title, options)`：新页面只建笔记。目标是叶子页面时先配对原笔记，新建失败时恢复原笔记并清理空目录。
    - `renamePage(id, newTitle)`：先 `fileManager.renameFile(md)`（保住反链）→ 再 `vault.rename(folder)`；文件夹改名失败时把 md 改回原名并报错。
    - `movePage(id, newParentId, index?)`：校验目标存在、不是自己、不是自己后代、目标作用域内无同名、在 pageRoot 内、不是忽略目录；`vault.rename(folder)` + `fileManager.renameFile(md)`；顺序文件同步迁移键。
    - `deletePage(id, { withChildren })`：默认只 `fileManager.trashFile(md)`，目录留着降级为分组；`withChildren` 才 `trashFile(folder)`。确认弹窗显示「直接子页面 N 个 / 全部后代 M 个」。
@@ -218,7 +218,7 @@ node scripts/gen-vault.mjs 1000 && npm run perf
 2. `utils/nameValidator.ts`：Windows 非法字符 `\\ / : * ? " < > |`、首尾空格与点、保留名 `CON/PRN/AUX/NUL/COM1-9/LPT1-9`、长度 1–120、与同级冲突（大小写不敏感比较）。
 3. `core/pageService.ts` 门面：UI 只依赖它，返回 `Result<T, PageError>` 而不是抛异常。
 4. 右键菜单（`Menu`）：新建子页面、新建同级页面、重命名、移动到…、补齐配对 / 解除配对、复制页面链接、在新标签页打开、在系统资源管理器中显示（桌面）、删除。
-5. 弹窗：`CreatePageModal`（标题 + 「同时创建子页面目录」勾选）、`RenamePageModal`（实时校验）、`MovePageModal`（只列合法目标）、`DeletePageModal`（带计数与「连子页面一起删除」）。
+5. 弹窗：`CreatePageModal`（名称输入与配对提示）、`RenamePageModal`（实时校验）、`MovePageModal`（只列合法目标）、`DeletePageModal`（带计数与「连子页面一起删除」）。
 6. 新建内容：默认 `# <标题>\n`；设置 `templatePath` 指向一个 md 时用其内容替换 `{{title}}` / `{{date}}` / `{{time}}`。
 7. 附件边界：`createPage` 只在目标目录已存在时复用，绝不因目录里有附件而报错；`deletePage` 的默认行为只删 md，附件原样留在目录里（连带删除时才随目录进回收站）。重命名页面时**不**改附件名，也不改正文里的 `![[...]]` 引用。
 8. 集成测试：在 `test-vault` 的临时副本上跑完整 CRUD 序列，断言磁盘状态与索引状态一致；覆盖失败补偿（mock `rename` 抛错）。
@@ -269,7 +269,7 @@ npm test -- operations   # 覆盖 18 条用例（见第六节）
 
 验收：拖动 5 个页面重排 → 顺序文件内容正确 → 重启保持；把父页面拖进自己的子目录 → 拒绝且树不变形。
 
-### M7 · 结构修复 / 性能 / 发布（1.0.0）
+### M7 · 结构修复 / 性能 / 发布
 
 任务：
 1. `core/pageStructureService.ts`：批量补齐配对（多选，>50 二次确认）、清理解除配对后的空目录（默认只建议不执行）、顺序文件条目清理。
@@ -277,7 +277,7 @@ npm test -- operations   # 覆盖 18 条用例（见第六节）
 3. 移动端实测：Android 上打开库、长按菜单、新建/改名/删除、卡片视图。
 4. 文档：README 中英双语（功能、截图、配置说明、与原生树的分工）、CHANGELOG、CONTRIBUTING（架构表 + 手动验收清单）。
 5. 发布前自查（照抄 clean-mermaid 的 `obsidian-plugin-release` 流程）：`!important` 计数用声明行正则、`any` 计数、`console.log` 清理、`isDesktopOnly` 与 `Platform` 用法一致、`versions.json` 同步、三件套产物 sha256。
-6. 首次社区评审：`community.obsidian.md/account/plugins/sub-page/review-branch` 预览到 0 个 Error 才提审。
+6. 首次社区评审：发布 GitHub Release 后从社区开发者门户提交。流程见 [贡献指南](../../CONTRIBUTING.md#发布)。
 
 验收：
 ```bash
@@ -495,7 +495,7 @@ t("error.nameIllegal", { char: ":" }) // 带插值
 
 ### 10.14 CHANGELOG 与 tag 时机
 
-每个里程碑：打 `v0.0.x` tag + CHANGELOG 写一条**内部**条目（简短）。1.0.0 时把 7 条整理成面向用户的双语发布说明。**不要**每个里程碑都写用户能看懂的详细说明，那是浪费。
+内部里程碑在 CHANGELOG 记录简短条目。公开版本使用与 manifest 一致的标签，如 `0.1.0`，并提供面向用户的双语发布说明。
 
 ## 十一、明确不做
 

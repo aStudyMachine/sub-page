@@ -2,6 +2,12 @@
 
 /* ---------------------------------------------------------------- 侧栏 */
 
+/* Obsidian 用无障碍名称生成气泡，文件行会向上找到树容器的名称。 */
+.workspace-tab-header[data-type="sub-page-tree"],
+.sp-tree {
+	--no-tooltip: true;
+}
+
 .sp-sidebar {
 	display: flex;
 	flex-direction: column;
@@ -140,6 +146,10 @@
 	height: 14px;
 }
 
+.sp-icon-default {
+	color: var(--icon-color, var(--text-muted));
+}
+
 .sp-title {
 	flex: 1 1 auto;
 	overflow: hidden;
@@ -189,15 +199,6 @@
 .sp-empty-hint {
 	margin-bottom: var(--size-4-2);
 	text-align: center;
-}
-
-.sp-footer {
-	padding: var(--size-4-2);
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.sp-new-button {
-	width: 100%;
 }
 
 /* ---------------------------------------------------------------- 正文块 */
@@ -300,6 +301,26 @@
 
 /* ---------------------------------------------------------------- 弹窗 */
 
+.sp-create-modal .setting-item.sp-modal-input {
+	padding-block: var(--size-4-1);
+}
+
+.sp-create-modal .sp-modal-input > .setting-item-info {
+	display: none;
+}
+
+.sp-create-modal .sp-modal-input > .setting-item-control {
+	flex: 1;
+}
+
+.sp-create-modal .sp-modal-input input {
+	width: 100%;
+}
+
+.sp-create-modal .sp-modal-error:empty {
+	display: none;
+}
+
 .sp-modal-error {
 	min-height: 1.2em;
 	color: var(--text-error);
@@ -354,4 +375,13 @@
 	padding: var(--size-4-4) 0;
 	color: var(--text-muted);
 	text-align: center;
+}
+.sp-agent-skill-modal pre {
+	max-height: 14em;
+	overflow: auto;
+	white-space: pre-wrap;
+}
+
+.sp-agent-skill-modal textarea {
+	width: 100%;
 }

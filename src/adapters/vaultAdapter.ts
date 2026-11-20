@@ -41,9 +41,16 @@ export interface VaultEvent {
 export interface VaultAdapter {
 	/** 不存在或不是目录时返回 null，不抛异常。 */
 	listFolder(path: string): Promise<FolderListing | null>;
+	/** 磁盘上的直接内容，包含未进入宿主索引的文件。 */
+	listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }>;
+	/** 重新核对目录为空，再移入库内回收站。 */
+	trashEmptyFolder(path: string): Promise<boolean>;
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string | null>;
 	writeText(path: string, content: string): Promise<void>;
+	writeVerifiedText(path: string, content: string, previous: string | null, keepRecoveryCopy?: boolean): Promise<void>;
+	/** 使用宿主磁盘适配器逐层创建配置目录，包含索引之外的目录。 */
+	ensureConfigFolders(path: string): Promise<void>;
 	createFolder(path: string): Promise<void>;
 	createFile(path: string, content: string): Promise<void>;
 	/** 重命名目录（不承担链接维护）。 */

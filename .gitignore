@@ -27,6 +27,18 @@ test-vault/
 
 # Obsidian vault leftovers
 .obsidian/
+!/demo-vault/.obsidian/
+/demo-vault/.obsidian/*
+!/demo-vault/.obsidian/app.json
+!/demo-vault/.obsidian/appearance.json
+!/demo-vault/.obsidian/community-plugins.json
+!/demo-vault/.obsidian/plugins/
+/demo-vault/.obsidian/plugins/*
+!/demo-vault/.obsidian/plugins/sub-page/
+/demo-vault/.obsidian/plugins/sub-page/*
+!/demo-vault/.obsidian/plugins/sub-page/data.json
+!/demo-vault/.obsidian/plugins/sub-page/order.json
+/demo-vault/.trash/
 
 # OS junk
 .DS_Store

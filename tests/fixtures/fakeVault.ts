@@ -81,6 +81,19 @@ export class FakeVault implements VaultAdapter {
 		return this.folders.has(normalized) || this.files.has(normalized);
 	}
 
+	async listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }> {
+		const listing = await this.listFolder(path);
+		if (!listing) throw new Error(`目录不存在：${path}`);
+		return { files: listing.files.map((file) => file.path), folders: listing.folders.map((folder) => folder.path) };
+	}
+
+	async trashEmptyFolder(path: string): Promise<boolean> {
+		const { files, folders } = await this.listFolderContents(path);
+		if (files.length || folders.length) return false;
+		await this.trash(path);
+		return true;
+	}
+
 	async readText(path: string): Promise<string | null> {
 		return this.files.get(normalizePath(path))?.content ?? null;
 	}
@@ -90,6 +103,15 @@ export class FakeVault implements VaultAdapter {
 		const existing = this.files.get(normalized);
 		this.files.set(normalized, { content, mtime: this.tick(), ctime: existing?.ctime ?? this.clock });
 		this.emit({ kind: "modify", path: normalized });
+	}
+
+	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
+		if (await this.readText(path) !== previous) throw new Error(`文件已变更：${path}`);
+		await this.writeText(path, content);
+	}
+
+	async ensureConfigFolders(path: string): Promise<void> {
+		await this.createFolder(path);
 	}
 
 	async createFolder(path: string): Promise<void> {
