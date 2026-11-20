@@ -22,22 +22,26 @@ const folder = {
 const note = { id: "jvm/gc" as PageId, childIds: [], filePath: "jvm/gc.md" };
 const other = { id: "home" as PageId, childIds: [], filePath: "home.md" };
 
-async function openTree(initiallyExpanded: string[] = [folder.id]) {
+async function openTree(initiallyExpanded: string[] = [folder.id], branch: Partial<PageNode> = folder) {
 	let activeFile = Object.assign(new TFile(), { path: note.filePath });
 	let onFileOpen: (file: TFile | null) => void = () => {};
 	const workspace = {
 		getActiveFile: () => activeFile,
+		getLeaf: () => ({ openFile }),
 		on: (_event: string, callback: typeof onFileOpen) => { onFileOpen = callback; },
 	};
+	const file = Object.assign(new TFile(), { path: branch.filePath });
+	const openFile = vi.fn(async (_file: TFile) => {});
 	let saved = new Set(initiallyExpanded);
 	const movePage = vi.fn(async (_source: PageId, _target: PageId) => ({ ok: true, value: note.id }));
 	const plugin = {
+		app: { workspace, vault: { getAbstractFileByPath: () => file } },
 		expandedIds: saved,
 		setExpandedIds: (ids: Set<string>) => { saved = new Set(ids); },
 		service: {
 			operations: { movePage },
-			index: { current: { nodes: new Map([folder, note, other].map((node) => [node.id, node])) } },
-			getRoots: () => [folder, other],
+			index: { current: { nodes: new Map([branch, note, other].map((node) => [node.id, node])) } },
+			getRoots: () => [branch, other],
 			getChildren: () => [note],
 			getAncestors: (id: PageId) => id === note.id ? [folder] : [],
 			nodeForFilePath: (path: string) => [note, other].find((node) => node.filePath === path),
@@ -68,7 +72,10 @@ async function openTree(initiallyExpanded: string[] = [folder.id]) {
 		rows,
 		saved: () => [...saved],
 		movePage,
-		clickFolder: () => view["onRowClick"]({ target: { closest: () => null } } as unknown as MouseEvent, folder as PageNode),
+		openFile,
+		clickFolder: (icon = false) => view["onRowClick"](
+			{ target: { closest: () => icon ? {} : null } } as unknown as MouseEvent, branch as PageNode,
+		),
 		press: (key: string) => view["onKeyDown"]({ key, preventDefault: () => {} } as KeyboardEvent),
 		open: (path: string) => {
 			if (path !== activeFile.path) activeFile = Object.assign(new TFile(), { path });
@@ -76,6 +83,20 @@ async function openTree(initiallyExpanded: string[] = [folder.id]) {
 		},
 	};
 }
+
+it("父页面标题单击后立即切换子页面并打开笔记，图标只切换", async () => {
+	const tree = await openTree([], { ...folder, kind: "parent", filePath: "jvm/jvm.md" });
+	tree.clickFolder();
+	expect(tree.openFile).toHaveBeenCalledWith(expect.objectContaining({ path: "jvm/jvm.md" }));
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	tree.clickFolder();
+	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
+	tree.clickFolder(true);
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	tree.clickFolder(true);
+	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
+	expect(tree.openFile).toHaveBeenCalledTimes(2);
+});
 
 it("当前笔记位于分组内时，点击和键盘仍可折叠或展开分组", async () => {
 	const tree = await openTree();
