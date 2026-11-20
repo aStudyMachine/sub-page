@@ -143,15 +143,18 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	async renameFolder(from: string, to: string): Promise<void> {
 		const target = this.app.vault.getAbstractFileByPath(normalizePath(from));
 		if (!(target instanceof TFolder)) throw new Error(`目录不存在：${from}`);
-		// vault.rename 只改目录本身，里面的笔记路径跟着变，但指向它们的链接不会被改写 ——
-		// 这是配对模型必须接受的代价（同名笔记单独走 renameFile 才有链接维护）。
-		await this.app.vault.rename(target, normalizePath(to));
+		// 目录下的笔记也可能被其他页面引用，交给宿主更新链接。
+		await this.renameWithLinks(target, to);
 	}
 
 	async renameFile(from: string, to: string): Promise<void> {
-		const vault = this.app.vault;
-		const target = vault.getAbstractFileByPath(normalizePath(from));
+		const target = this.app.vault.getAbstractFileByPath(normalizePath(from));
 		if (!(target instanceof TFile)) throw new Error(`文件不存在：${from}`);
+		await this.renameWithLinks(target, to);
+	}
+
+	private async renameWithLinks(target: TAbstractFile, to: string): Promise<void> {
+		const vault = this.app.vault;
 		const destination = normalizePath(to);
 		await this.app.fileManager.renameFile(target, destination);
 		if (target.path === destination) return;
