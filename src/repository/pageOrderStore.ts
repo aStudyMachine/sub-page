@@ -172,19 +172,30 @@ export class PageOrderStore {
 	}
 
 	async removeScopeTree(scope: string): Promise<void> {
+		return this.mutate((order) => this.deleteScopeTree(order, scope));
+	}
+
+	async collapseScope(root: string, scope: string, parentScope: string, folderKey: string, noteKey: string): Promise<void> {
 		return this.mutate((order) => {
-			for (const key of Object.keys(order)) {
-				if (key === scope || key.startsWith(scope + "/")) delete order[key];
+			const siblings = order[parentScope];
+			if (siblings?.includes(folderKey)) {
+				order[parentScope] = siblings.filter((key) => key !== noteKey).map((key) => key === folderKey ? noteKey : key);
 			}
-		});
+			this.deleteScopeTree(order, scope);
+		}, normalizePath(root));
+	}
+
+	private deleteScopeTree(order: OrderMap, scope: string): void {
+		for (const key of Object.keys(order)) {
+			if (key === scope || key.startsWith(scope + "/")) delete order[key];
+		}
 	}
 
 	async reorder(scope: string, keys: string[]): Promise<void> {
 		await this.setKeys(scope, keys);
 	}
 
-	private mutate(update: (order: OrderMap) => void): Promise<void> {
-		const root = this.pageRoot;
+	private mutate(update: (order: OrderMap) => void, root = this.pageRoot): Promise<void> {
 		return this.enqueue(async () => {
 			const current = this.pageRoot === root && this.loaded ? this.order : (await this.loadRoot(root)).order;
 			const draft: OrderMap = Object.assign(Object.create(null), current);

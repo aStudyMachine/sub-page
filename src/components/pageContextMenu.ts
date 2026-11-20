@@ -146,6 +146,7 @@ export async function pair(plugin: SubPagePlugin, node: PageNode): Promise<void>
 export async function unpair(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 	const result = await plugin.service.operations.unpairPage(node.id);
 	if (!result.ok) new Notice(result.message);
+	else if (result.warning) new Notice(result.warning);
 }
 
 async function copyLink(plugin: SubPagePlugin, node: PageNode): Promise<void> {

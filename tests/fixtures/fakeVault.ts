@@ -81,6 +81,19 @@ export class FakeVault implements VaultAdapter {
 		return this.folders.has(normalized) || this.files.has(normalized);
 	}
 
+	async listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }> {
+		const listing = await this.listFolder(path);
+		if (!listing) throw new Error(`目录不存在：${path}`);
+		return { files: listing.files.map((file) => file.path), folders: listing.folders.map((folder) => folder.path) };
+	}
+
+	async trashEmptyFolder(path: string): Promise<boolean> {
+		const { files, folders } = await this.listFolderContents(path);
+		if (files.length || folders.length) return false;
+		await this.trash(path);
+		return true;
+	}
+
 	async readText(path: string): Promise<string | null> {
 		return this.files.get(normalizePath(path))?.content ?? null;
 	}

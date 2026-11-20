@@ -27,6 +27,8 @@ With plain folders, "where is the entry point for this folder" needs a Folder No
 
    The block lists the current note's children. It locates the page **purely by the note's own path**, so previews, multiple tabs and exports never point at the wrong page.
 
+**Restore pages that have no children** is on by default. When the index refreshes, a paired folder containing only its original note is restored to a standalone note. Turn this setting off to keep paired folders.
+
 ### Block options
 
 | Key | Values | Default |
