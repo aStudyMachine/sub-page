@@ -155,15 +155,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 
 ## 发布
 
-`.github/workflows/release.yml` 只能从 `main` 手动触发，默认 `dry_run`。
-
-顺序（不要跳）：
-
-1. 运行 `npm run bump -- <x.y.z>`，添加 `docs/release-notes/<x.y.z>.md`，更新变更记录，在样例库验收后提交并推送 `dev`。
-2. 合并并推送 `main`，在该分支运行 `dry_run`，记录提交 SHA、三个产物的 SHA-256 和 `checksums_digest`。
-3. 为该提交创建并推送标签 `<x.y.z>`。从同一提交关闭 `dry_run` 触发发布，填入上一步的 `checksums_digest`。工作流会核对标签目标和产物校验和。
-4. 下载 Release 的三个独立文件，核对各文件的 SHA-256，再用 `gh attestation verify <文件> --repo aStudyMachine/sub-page --source-digest <提交SHA> --signer-workflow aStudyMachine/sub-page/.github/workflows/release.yml` 逐个验证构建来源。
-5. 首次上架时，用 Obsidian 社区开发者门户关联 GitHub 并提交公开仓库。等初审通过后，在门户中发布条目，再从 Obsidian 客户端检索与安装。已有条目可先用门户的分支预览。**版本触发 Error 级问题时，修复后升版发新 Release**。 [Obsidian 插件提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
+按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
 
 ### Release 说明的统一格式
 

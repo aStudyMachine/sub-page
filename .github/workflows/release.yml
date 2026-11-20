@@ -73,12 +73,10 @@ jobs:
           EXPECTED_CHECKSUMS_DIGEST: ${{ inputs.expected_checksums_digest }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          sha256sum main.js manifest.json styles.css | tee "$RUNNER_TEMP/sub-page-checksums.txt"
-          digest=$(sha256sum "$RUNNER_TEMP/sub-page-checksums.txt" | cut -d' ' -f1)
-          echo "checksums_digest=$digest"
-          if [[ "$DRY_RUN" == "false" && "$digest" != "$EXPECTED_CHECKSUMS_DIGEST" ]]; then
-            echo "::error::发布产物与 dry run 的校验和不一致"
-            exit 1
+          if [[ "$DRY_RUN" == "false" ]]; then
+            node scripts/release-checksums.mjs . "$EXPECTED_CHECKSUMS_DIGEST"
+          else
+            node scripts/release-checksums.mjs
           fi
 
       - name: 证明来源

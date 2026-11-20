@@ -1,10 +1,6 @@
-import { createHash } from "node:crypto";
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, unlinkSync } from "node:fs";
+import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-
-function digest(file) {
-	return createHash("sha256").update(readFileSync(file)).digest("hex");
-}
+import { sha256File } from "./sha256.mjs";
 
 function isExistingFile(file) {
 	const stat = lstatSync(file, { throwIfNoEntry: false });
@@ -17,7 +13,7 @@ function isExistingFile(file) {
 export function deployArtifacts(sourceDir, targetDir, backupRoot, names, requiredNames = []) {
 	const files = names.map((name) => {
 		const source = join(sourceDir, name);
-		return { name, source, target: join(targetDir, name), hash: digest(source) };
+		return { name, source, target: join(targetDir, name), hash: sha256File(source) };
 	});
 	mkdirSync(targetDir, { recursive: true });
 	const lock = join(targetDir, ".deploy-lock");
@@ -54,7 +50,7 @@ export function deployArtifacts(sourceDir, targetDir, backupRoot, names, require
 				copyFileSync(file.source, staged);
 				renameSync(staged, file.target);
 				touched.push(file);
-				if (digest(file.target) !== file.hash) {
+				if (sha256File(file.target) !== file.hash) {
 					throw new Error(`SHA-256 校验失败：${file.target}`);
 				}
 			}

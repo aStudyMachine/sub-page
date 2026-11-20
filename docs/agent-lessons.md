@@ -113,3 +113,19 @@ Obsidian 1.15.1 正在更新链接时，`fileManager.renameFile` 可能先返回
 ### 2.18 系统回收失败可能正常返回
 
 Obsidian 1.15.1 的 FileManager.trashFile() 在系统回收失败时返回 false，已安装的 API 类型仍声明 Promise<void>。把宿主结果作为 unknown 检查，遇到 false 先返回删除失败，保留页面和手动顺序。见 [宿主变更记录](https://obsidian.md/changelog/2026-11-12-desktop-v1.15.1/) 和 [适配层回归测试](../tests/unit/obsidianVaultAdapter.test.ts)。
+
+### 2.19 目录改名也要验证笔记链接
+
+发布验收发现目录改名和跨作用域移动后，子笔记的链接仍指向旧路径。直接调用 `vault.rename` 绕开了宿主的链接维护。目录和笔记统一通过 `fileManager.renameFile`，并在样例库从链接来源打开目标笔记验证。配对目录清理的时序见 §2.16。见 [宿主 API 决策](adr/0005-host-api-only.md) 和 [适配层测试](../tests/unit/obsidianVaultAdapter.test.ts)。
+
+### 2.20 文件移动成功后仍可能保存顺序失败
+
+损坏或不可写的 `order.json` 会使顺序保存抛错，此时物理移动可能已经提交。若调用方只能看到拒绝的 Promise，树也可能没有刷新。移动完成后即刷新索引，保留实际结果并返回持久化警告。核对新路径、原顺序文件以及 UI 提示。见 [页面操作测试](../tests/unit/pageOperationService.test.ts)。
+
+### 2.21 门户自动化先确认浏览器登录态
+
+首发时 Orca 内置浏览器使用独立配置，打开了未登录页。浏览器扩展的本地监听又遇到 Windows `os error 10013`。切换到已有登录态的原生 Chrome 后可继续，独立窗口可避免打断用户当前标签页。在本次会话里，通过可访问的重载按钮刷新成功。门户显示已排队后继续按版本查看正式报告。见 [社区发布手册](obsidian-community-release.md#门户评审)。
+
+### 2.22 正式构建要在公开发布前核对 dry run
+
+原流程打印校验和后直接创建 Release，默认分支推进或重新构建变化都可能使实际资产偏离验收结果。工作流在公开前校验标签指向本次 SHA，并将三个文件的校验和清单与 dry run 比对。下载后逐项核验字节与构建证明。见 [发布工作流](../.github/workflows/release.yml) 和 [校验脚本](../scripts/release-checksums.mjs)。
