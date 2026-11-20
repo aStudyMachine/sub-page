@@ -1,5 +1,7 @@
 # 贡献指南
 
+插件功能与使用方式见 [英文 README](README.md) 或 [中文 README](README.zh-CN.md)。项目术语见 [GLOSSARY](GLOSSARY.md)，顺序文件格式与迁移规则见 [ADR-0004](docs/adr/0004-order-file.md)，其他架构决策见 [ADR 目录](docs/adr/)。
+
 ## 项目结构
 
 | 目录 | 职责 | 不要放什么 |

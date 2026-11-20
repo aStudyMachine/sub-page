@@ -1,22 +1,20 @@
 # Sub Page
 
-Notion 式的 Obsidian 子页面树。把散落在文件夹里的笔记变成可展开、可拖拽的页面层级。
+[简体中文](README.zh-CN.md)
 
-**不需要改造现有库。** 页面根内的任意笔记都是页面；如果它恰好有同名目录，它就升级为父页面，目录里的笔记自动成为它的子页面。所以打开一个已有的库，树当场就在。
+Browse and organize your Obsidian notes as nested pages in a sidebar. Add the same child pages to a note as a list or a card grid. Sub Page can show your existing vault as a tree as soon as you open it.
 
-## 它解决什么
+## What you can do
 
-用文件夹组织笔记时，「这个目录的入口在哪」只能靠 Folder Note 之类的插件，而且每加一层都要手动维护一个 index 笔记。Sub Page 把目录本身当作页面：
+- **Browse and search your page tree** alongside Obsidian’s file explorer. Click a parent page’s title to open the note and expand or collapse its children. Click its icon to toggle the list on its own.
+- **Create and organize pages** from the sidebar. Use **+** to create a page, or right-click a page and choose **New sub page**. On desktop, drag to the center of a row to make a page its child, or to the top or bottom edge to reorder it. On mobile, long-press a page to open its menu and use **Move up** or **Move down**.
+- **Show child pages inside a note** as a list or card grid, with optional icons and descriptions.
 
-- 目录 `Java/JVM/` 里放 `JVM.md`，`JVM.md` 就是 JVM 这一层的页面，目录里的其它笔记是它的子页面。
-- 没有同名笔记的目录仍然会出现在树里，标为分组目录 —— 结构不完整的库也能用，右键「补齐配对」就补齐了。
-- 侧栏与正文里的 ```subpages 块共用同一份索引，两者永远不会显示不一致。
+## Get started
 
-## 用法
-
-1. 设置里把「页面根」指向你放页面的目录（默认是整个库）。
-2. 点左侧功能区的 **子页面** 图标（列表树那个），或命令面板执行 **Sub Page: 打开子页面面板**，首次打开时页面树和 Obsidian 的文件列表同在左侧栏。
-3. 任意笔记正文里插入：
+1. Open the page tree from the **Sub Page** icon in the left ribbon or run **Sub Page: Open sub page panel** from the command palette. The panel first opens in the left sidebar. Run **Sub Page: Collapse native file explorer** if you want more room for the page tree.
+2. Leave **Page root** blank to show the whole vault, or choose a folder in the plugin settings. Enable **Show empty folders** to see folders without pages.
+3. Add this block to a note and switch to Reading view to see that note’s child pages.
 
    ````markdown
    ```subpages
@@ -25,66 +23,29 @@ Notion 式的 Obsidian 子页面树。把散落在文件夹里的笔记变成可
    ```
    ````
 
-   这个块会列出当前笔记的子页面。**只用笔记自己的路径定位**，所以在预览、多标签页、导出里都不会指错页面。
+## How notes become parent pages
 
-「无子页面则删除文件夹，还原原本的页面」默认开启。索引刷新时，插件会把只剩原笔记的配对目录还原为普通笔记。关闭此设置可保留配对目录。
+A note with the same name as its containing folder represents that folder in the tree. For example, `Java/JVM/JVM.md` is the JVM parent page, and `Java/JVM/Garbage collection.md` is one of its children. A folder without a matching note groups the pages it contains.
 
-### 块配置
+A new page starts as a regular note. When it receives its first child, Sub Page moves the original note into a matching folder. With **Restore pages that have no children** enabled by default, Sub Page moves the original note back up one level when it is the only item left and sends the empty folder to the vault trash. The folder stays in place if a note with the same name already exists at the destination. Turn this setting off to keep parent folders.
 
-| 键 | 取值 | 默认 |
+## Customize the child-page list
+
+| Option | Values | Default |
 | --- | --- | --- |
-| `view` | `list` / `card` | 设置里的默认值 |
-| `sort` | `name` / `created` / `modified` / `manual` | 设置里的默认值 |
-| `show-icon` | `true` / `false` | `true` |
-| `show-description` | `true` / `false` | `false` |
-| `columns` | 正整数 | `2` |
-| `limit` | 正整数，`0` 为不限 | `0` |
+| `view` | `list` or `card` | Plugin setting |
+| `sort` | `name`, `created`, `modified`, or `manual` | Plugin setting |
+| `show-icon` | `true` or `false` | `true` |
+| `show-description` | `true` or `false` | `false` |
+| `columns` | Number of columns in card view | `2` |
+| `limit` | Maximum number of pages, or `0` for all | `0` |
 
-### 页面元数据
+To customize a page’s icon and description, add `icon` and `description` in its Obsidian Properties. The icon can be an emoji like `📁` or a value like `lucide:folder`.
 
-图标和描述写在笔记的 frontmatter 里：
+## Install
 
-```yaml
----
-icon: "📁"        # emoji 原样显示；写 lucide:folder 则用图标字体
-description: 把 JVM 相关笔记收在一处
----
-```
+Sub Page supports Obsidian 1.15.0 or newer on desktop and mobile.
 
-## 与原生文件浏览器并存
+For manual installation, place the release files `main.js`, `manifest.json`, and `styles.css` in your vault’s `.obsidian/plugins/sub-page/` folder. Restart Obsidian and enable **Sub Page** under **Settings → Community plugins**. [GitHub Releases](https://github.com/aStudyMachine/sub-page/releases)
 
-Sub Page 不接管、不隐藏原生文件浏览器。同一份目录会在两处出现，这是有意的：原生树在重命名文件夹、拖附件时仍然更好用。命令面板有 **折叠原生文件浏览器** 一键收起左侧，想只看一套时用它。
-
-## 顺序
-
-拖拽排序保存在插件目录的 `order.json`（默认 `.obsidian/plugins/sub-page/order.json`）。`roots` 按页面根分开保存，外层的 `""` 表示整个库。
-
-```json
-{
-  "roots": {
-    "": {
-      "": ["首页", "笔记规范", "Java"],
-      "Java": ["jvm", "并发"]
-    }
-  }
-}
-```
-
-每个页面根下按父页面 ID 记录子项名称，内层的 `""` 表示顶层。未登记的子项按名称自然排序。升级后首次打开对应页面根时会导入原来的 `.subpage-order.json`，旧文件作为备份保留。跨设备使用时，将 `order.json` 纳入插件配置同步。
-
-## 安装
-
-社区目录尚未上架。手动安装：把 `main.js`、`manifest.json`、`styles.css` 放进 `<库>/.obsidian/plugins/sub-page/`，重启 Obsidian 后在第三方插件里启用。
-
-## 支持范围
-
-- 桌面与移动端均可（`isDesktopOnly: false`），拖拽排序仅桌面（移动端用右键菜单里的上移/下移）。
-- 需要 Obsidian 1.15.0 及以上。
-
-## 开发
-
-见 `CONTRIBUTING.md`。术语以 `GLOSSARY.md` 为准，架构决策见 `docs/adr/`。
-
-## 许可
-
-MIT
+[Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
