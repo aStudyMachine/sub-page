@@ -297,6 +297,26 @@
 
 /* ---------------------------------------------------------------- 弹窗 */
 
+.sp-create-modal .setting-item.sp-modal-input {
+	padding-block: var(--size-4-1);
+}
+
+.sp-create-modal .sp-modal-input > .setting-item-info {
+	display: none;
+}
+
+.sp-create-modal .sp-modal-input > .setting-item-control {
+	flex: 1;
+}
+
+.sp-create-modal .sp-modal-input input {
+	width: 100%;
+}
+
+.sp-create-modal .sp-modal-error:empty {
+	display: none;
+}
+
 .sp-modal-error {
 	min-height: 1.2em;
 	color: var(--text-error);

@@ -39,9 +39,9 @@ vi.mock("obsidian", () => ({
 
 vi.mock("../../src/modals/pageModals", () => ({
 	CreatePageModal: class {
-		constructor(_app: unknown, _plugin: unknown, private readonly options: { parentId: PageId | null }) {}
+		constructor(_app: unknown, _plugin: unknown, private readonly options: { parentId: PageId | null; defaultTitle?: string }) {}
 		open(): void {
-			menu.openCreate(this.options.parentId);
+			menu.openCreate(this.options.parentId, this.options.defaultTitle);
 		}
 	},
 }));
@@ -86,10 +86,11 @@ describe("新建页面", () => {
 		expect(h.vault.content("新页面.md")).toBe("# 新页面\n");
 	});
 
-	it("withFolder 时同时建目录，得到父页面", async () => {
+	it("顶层笔记首次接收子页面时才配对目录", async () => {
 		const h = await harness(new FakeVault());
-		const result = await h.ops.createPage(null, "项目", { withFolder: true });
-		expect(result).toMatchObject({ ok: true, value: "项目" });
+		expect(await h.ops.createPage(null, "项目")).toEqual({ ok: true, value: "项目.md" });
+		expect(h.vault.folderPaths()).toEqual([]);
+		expect(await h.ops.createPage(id("项目.md"), "需求")).toEqual({ ok: true, value: "项目/需求.md" });
 		expect(h.vault.folderPaths()).toEqual(["项目"]);
 		expect(h.vault.content("项目/项目.md")).toBe("# 项目\n");
 		expect(h.index.getNode(id("项目"))?.kind).toBe("parent");
@@ -118,8 +119,9 @@ describe("新建页面", () => {
 		menu.openCreate.mockClear();
 		openPageMenuAt(plugin, { x: 0, y: 0 }, { node });
 		menu.items.get("menu.newSibling")!();
-		expect(menu.openCreate).toHaveBeenLastCalledWith(null);
+		expect(menu.openCreate).toHaveBeenLastCalledWith(null, undefined);
 		menu.items.get("menu.newChild")!();
+		expect(menu.openCreate).toHaveBeenLastCalledWith("首页.md", "modal.create.untitled");
 		const parentId = menu.openCreate.mock.lastCall?.[0] as PageId | null;
 		const result = await h.ops.createPage(parentId, "子");
 		expect(result).toEqual({ ok: true, value: "首页/子.md" });
@@ -130,6 +132,32 @@ describe("新建页面", () => {
 		expect(h.order.getKeys("")).toEqual(["笔记规范.md", "首页"]);
 	});
 
+	it("留空时顺延默认名称，并避开磁盘上的同名笔记和目录", async () => {
+		const h = await harness(sampleVault());
+		const options = { defaultTitle: "未命名" };
+		expect(await h.ops.createPage(id("项目A"), "  ", options)).toEqual({ ok: true, value: "项目A/未命名.md" });
+		h.vault.seedFolder("项目A/未命名 2");
+		expect(await h.ops.createPage(id("项目A"), "", options)).toEqual({ ok: true, value: "项目A/未命名 3.md" });
+		expect(h.vault.content("项目A/未命名 3.md")).toBe("# 未命名 3\n");
+		expect(await h.ops.createPage(id("项目A"), "未命名", options)).toMatchObject({ ok: false, reason: "name-conflict" });
+		expect(await h.ops.createPage(id("项目A"), "")).toMatchObject({ ok: false, reason: "invalid-name" });
+	});
+
+	it("给同名叶子首次新建子页面时避开即将移入的配对笔记", async () => {
+		const h = await harness(new FakeVault({ "未命名.md": "原笔记" }));
+		expect(await h.ops.createPage(id("未命名.md"), "", { defaultTitle: "未命名" }))
+			.toEqual({ ok: true, value: "未命名/未命名 2.md" });
+		expect(h.vault.content("未命名/未命名.md")).toBe("原笔记");
+	});
+
+	it("顶层留空新建时顺延名称，只创建笔记", async () => {
+		const h = await harness(new FakeVault({ "未命名.md": "# 原笔记\n" }));
+		expect(await h.ops.createPage(null, "", { defaultTitle: "未命名" }))
+			.toEqual({ ok: true, value: "未命名 2.md" });
+		expect(h.vault.content("未命名 2.md")).toBe("# 未命名 2\n");
+		expect(h.vault.folderPaths()).toEqual([]);
+	});
+
 	it("首次新建子页面失败时恢复原笔记与顺序", async () => {
 		const vault = sampleVault();
 		const h = await harness(vault);
@@ -138,7 +166,7 @@ describe("新建页面", () => {
 		vault.createFile = async () => {
 			throw new Error("磁盘满了");
 		};
-		const result = await h.ops.createPage(id("首页.md"), "子", { withFolder: true });
+		const result = await h.ops.createPage(id("首页.md"), "子");
 		expect(result).toMatchObject({ ok: false, reason: "io-error" });
 		expect(vault.content("首页.md")).toBe(content);
 		expect(vault.folderPaths()).not.toContain("首页");
@@ -147,7 +175,7 @@ describe("新建页面", () => {
 
 	it("子页面与配对笔记同名时拒绝新建", async () => {
 		const h = await harness(sampleVault());
-		const result = await h.ops.createPage(id("首页.md"), "首页", { withFolder: true });
+		const result = await h.ops.createPage(id("首页.md"), "首页");
 		expect(result).toMatchObject({ ok: false, reason: "name-conflict" });
 		expect(h.vault.folderPaths()).not.toContain("首页");
 	});
@@ -194,15 +222,15 @@ describe("新建页面", () => {
 		expect(h.vault.content("日记.md")).toMatch(/^# 日记\n\n> \d{4}-\d{2}-\d{2}/);
 	});
 
-	it("建目录成功但建文件失败时把空目录清掉", async () => {
+	it("直接新建笔记失败时返回文件错误", async () => {
 		const vault = new FakeVault();
 		vault.createFile = async () => {
 			throw new Error("磁盘满了");
 		};
 		const h = await harness(vault);
-		const result = await h.ops.createPage(null, "半成品", { withFolder: true });
+		const result = await h.ops.createPage(null, "半成品");
 		expect(result).toMatchObject({ ok: false, reason: "io-error" });
-		expect(h.vault.folderPaths()).toEqual([]);
+		expect(h.vault.filePaths()).toEqual([]);
 	});
 
 	it("新建不写顺序文件，新项排在已登记项之后", async () => {
@@ -321,7 +349,8 @@ describe("移动", () => {
 
 	it("移动整个父页面，子树跟着走", async () => {
 		const h = await harness(sampleVault());
-		await h.ops.createPage(null, "归档", { withFolder: true });
+		await h.ops.createPage(null, "归档");
+		await h.ops.createPage(id("归档.md"), "说明");
 		const result = await h.ops.movePage(id("项目A"), id("归档"));
 		expect(result).toMatchObject({ ok: true, value: "归档/项目A" });
 		expect(h.vault.filePaths()).toContain("归档/项目A/设计/设计.md");

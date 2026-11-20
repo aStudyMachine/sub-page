@@ -210,7 +210,7 @@ node scripts/gen-vault.mjs 1000 && npm run perf
 
 任务：
 1. `core/pageOperationService.ts`，每个操作都是「校验 → 执行 → 刷新子树 → 失败补偿」四段式：
-   - `createPage(parentId, title, { withFolder })`：`createFolder` → `createFile`；失败时删掉已建空目录并抛出可读错误。父页面不存在时先补父 md。
+   - `createPage(parentId, title, options)`：新页面只建笔记。目标是叶子页面时先配对原笔记，新建失败时恢复原笔记并清理空目录。
    - `renamePage(id, newTitle)`：先 `fileManager.renameFile(md)`（保住反链）→ 再 `vault.rename(folder)`；文件夹改名失败时把 md 改回原名并报错。
    - `movePage(id, newParentId, index?)`：校验目标存在、不是自己、不是自己后代、目标作用域内无同名、在 pageRoot 内、不是忽略目录；`vault.rename(folder)` + `fileManager.renameFile(md)`；顺序文件同步迁移键。
    - `deletePage(id, { withChildren })`：默认只 `fileManager.trashFile(md)`，目录留着降级为分组；`withChildren` 才 `trashFile(folder)`。确认弹窗显示「直接子页面 N 个 / 全部后代 M 个」。
@@ -218,7 +218,7 @@ node scripts/gen-vault.mjs 1000 && npm run perf
 2. `utils/nameValidator.ts`：Windows 非法字符 `\\ / : * ? " < > |`、首尾空格与点、保留名 `CON/PRN/AUX/NUL/COM1-9/LPT1-9`、长度 1–120、与同级冲突（大小写不敏感比较）。
 3. `core/pageService.ts` 门面：UI 只依赖它，返回 `Result<T, PageError>` 而不是抛异常。
 4. 右键菜单（`Menu`）：新建子页面、新建同级页面、重命名、移动到…、补齐配对 / 解除配对、复制页面链接、在新标签页打开、在系统资源管理器中显示（桌面）、删除。
-5. 弹窗：`CreatePageModal`（标题 + 「同时创建子页面目录」勾选）、`RenamePageModal`（实时校验）、`MovePageModal`（只列合法目标）、`DeletePageModal`（带计数与「连子页面一起删除」）。
+5. 弹窗：`CreatePageModal`（名称输入与配对提示）、`RenamePageModal`（实时校验）、`MovePageModal`（只列合法目标）、`DeletePageModal`（带计数与「连子页面一起删除」）。
 6. 新建内容：默认 `# <标题>\n`；设置 `templatePath` 指向一个 md 时用其内容替换 `{{title}}` / `{{date}}` / `{{time}}`。
 7. 附件边界：`createPage` 只在目标目录已存在时复用，绝不因目录里有附件而报错；`deletePage` 的默认行为只删 md，附件原样留在目录里（连带删除时才随目录进回收站）。重命名页面时**不**改附件名，也不改正文里的 `![[...]]` 引用。
 8. 集成测试：在 `test-vault` 的临时副本上跑完整 CRUD 序列，断言磁盘状态与索引状态一致；覆盖失败补偿（mock `rename` 抛错）。

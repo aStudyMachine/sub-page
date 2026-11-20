@@ -21,9 +21,8 @@ export interface DeleteOptions {
 }
 
 export interface CreateOptions {
-	/** 同时创建同名目录，让新页面直接可以放子页面。 */
-	withFolder?: boolean;
 	template?: string;
+	defaultTitle?: string;
 }
 
 export interface OperationDeps {
@@ -99,12 +98,23 @@ export class PageOperationService {
 	// ---------------------------------------------------------------- 新建
 
 	async createPage(parentId: PageId | null, rawTitle: string, options: CreateOptions = {}): Promise<OpResult<PageId>> {
-		const title = rawTitle.trim();
-		const check = checkName(title);
+		const enteredTitle = rawTitle.trim();
+		const baseTitle = enteredTitle || options.defaultTitle || "";
+		const check = checkName(baseTitle);
 		if (!check.ok) return fail("invalid-name", describeNameProblem(check.problem, check.detail));
 
 		const parent = parentId ? this.deps.getNode(parentId) : undefined;
 		if (parentId && !parent) return fail("not-found", "父页面不在索引里，请先重建索引");
+
+		const parentFolder = parent?.folderPath ?? this.deps.getPageRoot();
+		let title = baseTitle;
+		if (!enteredTitle) {
+			for (let suffix = 2; await this.childNameTaken(parent, parentFolder, title); suffix++) {
+				title = `${baseTitle} ${suffix}`;
+			}
+			const generatedCheck = checkName(title);
+			if (!generatedCheck.ok) return fail("invalid-name", describeNameProblem(generatedCheck.problem, generatedCheck.detail));
+		}
 
 		if (parent?.kind === "leaf") {
 			if (parent.title.toLowerCase() === title.toLowerCase()) {
@@ -113,7 +123,6 @@ export class PageOperationService {
 			return this.pairLeaf(parent, (folder) => this.writePage(folder, title, options));
 		}
 
-		const parentFolder = parentId ? this.abs(parentId) : this.deps.getPageRoot();
 		if (await this.checkConflict(parentFolder, title)) {
 			return fail("name-conflict", `同级已经有一个「${title}」了`);
 		}
@@ -128,25 +137,16 @@ export class PageOperationService {
 		return ok(id);
 	}
 
-	private async writePage(parentFolder: string, title: string, options: CreateOptions): Promise<PageId> {
-		const folderPath = joinPath(parentFolder, title);
-		// withFolder 时笔记必须落在目录里 —— 这才是配对模型，也是 id 变成目录路径的前提。
-		const filePath = options.withFolder ? joinPath(folderPath, title + ".md") : joinPath(parentFolder, title + ".md");
-		let createdFolder = false;
-		try {
-			if (options.withFolder) {
-				await this.adapter.createFolder(folderPath);
-				createdFolder = true;
-			}
-			// 建文件放在最后一步：它之前失败都能干净退出。
-			await this.adapter.createFile(filePath, renderTemplate(options.template, title));
-		} catch (error) {
-			// 目录建好但文件没建成，留下空目录会让人以为「什么都没发生」。
-			if (createdFolder) await this.trashEmptyFolder(folderPath).catch(() => undefined);
-			throw error;
-		}
+	private async childNameTaken(parent: PageNode | undefined, folder: string, title: string): Promise<boolean> {
+		// 叶子即将配对，原笔记会是新目录里的第一篇。
+		if (parent?.kind === "leaf") return parent.title.toLowerCase() === title.toLowerCase();
+		return this.checkConflict(folder, title);
+	}
 
-		return this.relativeId(options.withFolder ? folderPath : filePath) as PageId;
+	private async writePage(parentFolder: string, title: string, options: CreateOptions): Promise<PageId> {
+		const filePath = joinPath(parentFolder, title + ".md");
+		await this.adapter.createFile(filePath, renderTemplate(options.template, title));
+		return this.relativeId(filePath) as PageId;
 	}
 
 	private async trashEmptyFolder(path: string): Promise<void> {

@@ -28,7 +28,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.newChild"))
 				.setIcon("file-plus")
-				.onClick(() => openCreate(plugin, node.id)),
+				.onClick(() => openCreate(plugin, node.id, t("modal.create.untitled"))),
 		);
 		menu.addItem((item) =>
 			item.setTitle(t("menu.newSibling")).setIcon("files").onClick(() => openCreate(plugin, node.parentId)),
@@ -128,9 +128,10 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 	menu.showAtPosition(position);
 }
 
-export function openCreate(plugin: SubPagePlugin, parentId: PageId | null): void {
+export function openCreate(plugin: SubPagePlugin, parentId: PageId | null, defaultTitle?: string): void {
 	new CreatePageModal(plugin.app, plugin, {
 		parentId,
+		defaultTitle,
 		onCreated: (id) => void openPage(plugin, plugin.service.getNode(id)),
 	}).open();
 }

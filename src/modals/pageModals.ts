@@ -126,25 +126,27 @@ export interface CreateModalOptions {
 	parentId: PageId | null;
 	/** 已经点过「新建」的位置，默认带上的名字。 */
 	parentTitle?: string;
+	defaultTitle?: string;
 	onCreated(id: PageId): void;
 }
 
 export class CreatePageModal extends InputModal {
-	private withFolder: boolean;
-
 	constructor(
 		app: App,
 		plugin: SubPagePlugin,
 		private readonly options: CreateModalOptions,
 	) {
 		super(app, plugin);
-		this.withFolder = options.parentId === null;
+		this.modalEl.addClass("sp-create-modal");
 	}
 
 	get titleText(): string {
 		return this.plugin.t("modal.create.title");
 	}
 	get placeholderText(): string {
+		if (this.options.defaultTitle) {
+			return this.plugin.t("modal.create.optionalName", { title: this.options.defaultTitle });
+		}
 		return this.plugin.t("modal.create.placeholder");
 	}
 	get initialValue(): string {
@@ -152,34 +154,27 @@ export class CreatePageModal extends InputModal {
 	}
 
 	validate(value: string): string | null {
+		if (this.options.defaultTitle && value.trim() === "") return null;
 		const parent = this.plugin.service.getNode(this.options.parentId);
 		if (parent?.kind === "leaf" && value.trim().toLowerCase() === parent.title.toLowerCase()) {
 			return this.plugin.t("error.nameConflict");
 		}
 		const siblings = this.plugin.service.getChildren(this.options.parentId);
-		const problem = nameProblem(this.plugin, siblings, value);
-		if (problem) return problem;
-		// 未勾「建目录」时，同级的笔记与目录都可能撞名；只在这里拦一次，
-		// 操作服务里还会再拦（外部可能刚建过同名文件）。
-		if (!this.withFolder) {
-			const title = value.trim().toLowerCase();
-			const folderClash = siblings.find((node) => node.kind !== "leaf" && node.title.toLowerCase() === title);
-			if (folderClash) return this.plugin.t("error.nameConflict");
-		}
-		return null;
+		return nameProblem(this.plugin, siblings, value);
 	}
 
 	async submit(value: string): Promise<void> {
 		const template = await this.plugin.loadTemplate();
 		const result = await this.plugin.service.operations.createPage(this.options.parentId, value, {
-			withFolder: this.withFolder,
 			template,
+			defaultTitle: this.options.defaultTitle,
 		});
 		if (!result.ok) {
 			new Notice(result.message);
 			return;
 		}
-		new Notice(this.plugin.t("notice.created", { title: value }));
+		const title = this.plugin.service.getNode(result.value)?.title ?? (value || this.options.defaultTitle);
+		new Notice(this.plugin.t("notice.created", { title: title ?? "" }));
 		if (result.warning) new Notice(result.warning);
 		this.options.onCreated(result.value);
 	}
@@ -193,22 +188,6 @@ export class CreatePageModal extends InputModal {
 			});
 		}
 		super.onOpen();
-		new Setting(this.contentEl)
-			.setName(this.plugin.t("settings.createWithFolder.name"))
-			.setDesc(this.plugin.t("settings.createWithFolder.desc"))
-			.addToggle((toggle) =>
-				toggle.setValue(this.withFolder).onChange((value) => {
-					this.withFolder = value;
-					this.revalidateNow();
-				}),
-			);
-	}
-
-	/** 切换勾选会影响重名校验，需要重新跑一遍。 */
-	private revalidateNow(): void {
-		const problem = this.validate(this.input.getValue());
-		this.errorEl.setText(problem ?? "");
-		this.submitButton.toggleClass("is-disabled", problem !== null);
 	}
 }
 
