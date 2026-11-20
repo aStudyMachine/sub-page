@@ -126,7 +126,7 @@ export interface CreateModalOptions {
 	parentId: PageId | null;
 	/** 已经点过「新建」的位置，默认带上的名字。 */
 	parentTitle?: string;
-	defaultTitle?: string;
+	defaultTitle: string;
 	onCreated(id: PageId): void;
 }
 
@@ -144,17 +144,14 @@ export class CreatePageModal extends InputModal {
 		return this.plugin.t("modal.create.title");
 	}
 	get placeholderText(): string {
-		if (this.options.defaultTitle) {
-			return this.plugin.t("modal.create.optionalName", { title: this.options.defaultTitle });
-		}
-		return this.plugin.t("modal.create.placeholder");
+		return this.plugin.t("modal.create.optionalName", { title: this.options.defaultTitle });
 	}
 	get initialValue(): string {
 		return "";
 	}
 
 	validate(value: string): string | null {
-		if (this.options.defaultTitle && value.trim() === "") return null;
+		if (value.trim() === "") return null;
 		const parent = this.plugin.service.getNode(this.options.parentId);
 		if (parent?.kind === "leaf" && value.trim().toLowerCase() === parent.title.toLowerCase()) {
 			return this.plugin.t("error.nameConflict");
@@ -174,7 +171,7 @@ export class CreatePageModal extends InputModal {
 			return;
 		}
 		const title = this.plugin.service.getNode(result.value)?.title ?? (value || this.options.defaultTitle);
-		new Notice(this.plugin.t("notice.created", { title: title ?? "" }));
+		new Notice(this.plugin.t("notice.created", { title }));
 		if (result.warning) new Notice(result.warning);
 		this.options.onCreated(result.value);
 	}

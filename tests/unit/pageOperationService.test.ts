@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Command, MarkdownPostProcessorContext } from "obsidian";
+import { registerCommands } from "../../src/commands";
 import { openPageMenuAt } from "../../src/components/pageContextMenu";
 import { PageOperationService, renderTemplate } from "../../src/core/pageOperationService";
 import type SubPagePlugin from "../../src/main";
 import { PageId } from "../../src/models/pageId";
+import { DEFAULT_SETTINGS } from "../../src/models/settings";
 import { PageIndex } from "../../src/repository/pageIndex";
 import { ORDER_FILE_NAME, PageOrderStore } from "../../src/repository/pageOrderStore";
 import { DEFAULT_MAX_DEPTH, scan } from "../../src/repository/pageScanner";
+import { registerSubPageBlockProcessor } from "../../src/views/subPageRenderer";
 import { FakeVault, sampleVault } from "../fixtures/fakeVault";
 
 const menu = vi.hoisted(() => ({
@@ -15,6 +19,9 @@ const menu = vi.hoisted(() => ({
 
 vi.mock("obsidian", () => ({
 	Platform: { isDesktopApp: false },
+	ItemView: class {},
+	Modal: class {},
+	MarkdownRenderChild: class {},
 	Menu: class {
 		addItem(configure: (item: {
 			setTitle(title: string): unknown;
@@ -39,7 +46,7 @@ vi.mock("obsidian", () => ({
 
 vi.mock("../../src/modals/pageModals", () => ({
 	CreatePageModal: class {
-		constructor(_app: unknown, _plugin: unknown, private readonly options: { parentId: PageId | null; defaultTitle?: string }) {}
+		constructor(_app: unknown, _plugin: unknown, private readonly options: { parentId: PageId | null; defaultTitle: string }) {}
 		open(): void {
 			menu.openCreate(this.options.parentId, this.options.defaultTitle);
 		}
@@ -75,6 +82,64 @@ async function harness(vault: FakeVault, pageRoot = "", excludedFolders: string[
 }
 
 const id = (value: string) => value as PageId;
+
+describe("新建入口的目标位置", () => {
+	it.each([
+		{ commandId: "new-root", current: { id: "项目A/需求.md", parentId: "项目A" }, target: null },
+		{ commandId: "new-child", current: { id: "项目A/需求.md", parentId: "项目A" }, target: "项目A/需求.md" },
+		{ commandId: "new-child", current: undefined, target: null },
+	])("命令 $commandId 在当前页面为 $current 时将新页面建到 $target 下", ({ commandId, current, target }) => {
+		const commands = new Map<string, Command>();
+		const plugin = {
+			app: {},
+			t: (key: string) => key,
+			currentPage: () => current,
+			addCommand: (command: Command) => commands.set(command.id, command),
+			removeCommand: (commandId: string) => commands.delete(commandId),
+		} as unknown as SubPagePlugin;
+		menu.openCreate.mockClear();
+		registerCommands(plugin);
+		commands.get(commandId)!.callback!();
+		expect(menu.openCreate).toHaveBeenCalledExactlyOnceWith(target, "modal.create.untitled");
+	});
+
+	it("正文块在所属页面下新建子页面，使用页面 ID 定位", async () => {
+		const h = await harness(sampleVault());
+		const sourcePath = "项目A/设计/设计.md";
+		const page = h.index.getNode(id("项目A/设计"))!;
+		const processor = vi.fn<SubPagePlugin["registerMarkdownCodeBlockProcessor"]>();
+		const nodeForSourcePath = vi.fn((path: string) => path === sourcePath ? page : undefined);
+		const plugin = {
+			app: {},
+			settings: DEFAULT_SETTINGS,
+			t: (key: string) => key,
+			currentPage: () => h.index.getNode(id("首页.md")),
+			service: { nodeForSourcePath, getChildren: () => [] },
+			registerMarkdownCodeBlockProcessor: processor,
+			registerBlockRefresher: vi.fn(),
+		} as unknown as SubPagePlugin;
+		const addEventListener = vi.fn<(event: string, listener: () => void) => void>();
+		const el = {
+			addClass: vi.fn(),
+			empty: vi.fn(),
+			createDiv: () => ({
+				createSpan: vi.fn(),
+				createEl: () => ({ addEventListener }),
+			}),
+		} as unknown as HTMLElement;
+		const ctx = { sourcePath, addChild: vi.fn() } as unknown as MarkdownPostProcessorContext;
+		menu.openCreate.mockClear();
+		expect(registerSubPageBlockProcessor(plugin)).toBe(true);
+		const [language, render] = processor.mock.calls[0]!;
+		expect(language).toBe("subpages");
+		render("", el, ctx);
+		expect(nodeForSourcePath).toHaveBeenCalledWith(sourcePath);
+		const [event, create] = addEventListener.mock.calls[0]!;
+		expect(event).toBe("click");
+		create();
+		expect(menu.openCreate).toHaveBeenCalledExactlyOnceWith("项目A/设计", "modal.create.untitled");
+	});
+});
 
 describe("新建页面", () => {
 	it("在根层建叶子页面，只产生一个 .md", async () => {
@@ -119,7 +184,7 @@ describe("新建页面", () => {
 		menu.openCreate.mockClear();
 		openPageMenuAt(plugin, { x: 0, y: 0 }, { node });
 		menu.items.get("menu.newSibling")!();
-		expect(menu.openCreate).toHaveBeenLastCalledWith(null, undefined);
+		expect(menu.openCreate).toHaveBeenLastCalledWith(null, "modal.create.untitled");
 		menu.items.get("menu.newChild")!();
 		expect(menu.openCreate).toHaveBeenLastCalledWith("首页.md", "modal.create.untitled");
 		const parentId = menu.openCreate.mock.lastCall?.[0] as PageId | null;
@@ -130,6 +195,15 @@ describe("新建页面", () => {
 		expect(h.vault.folderPaths()).not.toContain("首页/子");
 		expect(h.vault.filePaths()).not.toContain("子.md");
 		expect(h.order.getKeys("")).toEqual(["笔记规范.md", "首页"]);
+	});
+
+	it("空白区菜单使用共用的默认名称创建根页面", () => {
+		const plugin = { app: {}, t: (key: string) => key } as unknown as SubPagePlugin;
+		menu.items.clear();
+		menu.openCreate.mockClear();
+		openPageMenuAt(plugin, { x: 0, y: 0 }, { node: null });
+		menu.items.get("menu.pairFolder")!();
+		expect(menu.openCreate).toHaveBeenCalledWith(null, "modal.create.untitled");
 	});
 
 	it("留空时顺延默认名称，并避开磁盘上的同名笔记和目录", async () => {

@@ -116,7 +116,7 @@ export class PageTreeView extends ItemView {
 			}
 		});
 		iconButton(toolbar, "plus", this.plugin.t("action.newPage")).addEventListener("click", () =>
-			openCreate(this.plugin, null, this.plugin.t("modal.create.untitled")),
+			openCreate(this.plugin, null),
 		);
 
 		this.listEl = container.createDiv({ cls: "sp-tree", attr: { role: "tree", "aria-label": this.plugin.t("view.tree.name") } });
