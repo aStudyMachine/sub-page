@@ -146,6 +146,10 @@
 	height: 14px;
 }
 
+.sp-icon-default {
+	color: var(--icon-color, var(--text-muted));
+}
+
 .sp-title {
 	flex: 1 1 auto;
 	overflow: hidden;
