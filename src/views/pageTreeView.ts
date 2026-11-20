@@ -360,13 +360,7 @@ export class PageTreeView extends ItemView {
 				return;
 			}
 			if (result.warning) new Notice(result.warning);
-			if (!targetId) return;
-			const ancestors = this.service.getAncestors(result.value).map((node) => node.id);
-			const expanded = expandAncestors(this.expanded, ancestors);
-			if (expanded.size !== this.expanded.size) {
-				this.expanded = expanded;
-				this.render();
-			}
+			if (targetId && this.expandPageAncestors(result.value)) this.render();
 		});
 	}
 
@@ -408,19 +402,20 @@ export class PageTreeView extends ItemView {
 		return this.service.nodeForFilePath(file.path)?.id ?? null;
 	}
 
+	private expandPageAncestors(id: PageId): boolean {
+		const ancestors = this.service.getAncestors(id).map((node) => node.id);
+		const expanded = expandAncestors(this.expanded, ancestors);
+		if (expanded.size === this.expanded.size) return false;
+		this.expanded = expanded;
+		return true;
+	}
+
 	/** 切换文件时才自动展开，保留用户对当前文件所在目录的折叠操作。 */
 	private onFileOpen(file: TFile | null): void {
 		if (file === this.lastOpenedFile) return;
 		this.lastOpenedFile = file;
 		const id = this.currentPageId(file);
-		if (id) {
-			const ancestors = this.service.getAncestors(id).map((node) => node.id);
-			const expanded = expandAncestors(this.expanded, ancestors);
-			if (expanded.size !== this.expanded.size) {
-				this.expanded = expanded;
-				this.render();
-			}
-		}
+		if (id && this.expandPageAncestors(id)) this.render();
 		for (const row of Array.from(this.listEl.querySelectorAll<HTMLElement>(".sp-row"))) {
 			row.toggleClass("is-current", row.getAttribute("data-id") === id);
 		}
@@ -450,10 +445,7 @@ export class PageTreeView extends ItemView {
 		if (!id) return;
 		this.searchTerm = "";
 		if (this.searchEl) this.searchEl.value = "";
-		this.expanded = expandAncestors(
-			this.expanded,
-			this.service.getAncestors(id).map((node) => node.id as string),
-		);
+		this.expandPageAncestors(id);
 		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
 		this.setFocusRing(id);

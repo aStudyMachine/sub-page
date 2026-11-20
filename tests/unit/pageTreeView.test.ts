@@ -30,10 +30,12 @@ async function openTree(initiallyExpanded: string[] = [folder.id]) {
 		on: (_event: string, callback: typeof onFileOpen) => { onFileOpen = callback; },
 	};
 	let saved = new Set(initiallyExpanded);
+	const movePage = vi.fn(async (_source: PageId, _target: PageId) => ({ ok: true, value: note.id }));
 	const plugin = {
 		expandedIds: saved,
 		setExpandedIds: (ids: Set<string>) => { saved = new Set(ids); },
 		service: {
+			operations: { movePage },
 			index: { current: { nodes: new Map([folder, note, other].map((node) => [node.id, node])) } },
 			getRoots: () => [folder, other],
 			getChildren: () => [note],
@@ -65,6 +67,7 @@ async function openTree(initiallyExpanded: string[] = [folder.id]) {
 		view,
 		rows,
 		saved: () => [...saved],
+		movePage,
 		clickFolder: () => view["onRowClick"]({ target: { closest: () => null } } as unknown as MouseEvent, folder as PageNode),
 		press: (key: string) => view["onKeyDown"]({ key, preventDefault: () => {} } as KeyboardEvent),
 		open: (path: string) => {
@@ -87,6 +90,15 @@ it("当前笔记位于分组内时，点击和键盘仍可折叠或展开分组"
 	expect(tree.rows.map((row) => row.id)).toEqual([folder.id, other.id]);
 	tree.press("ArrowRight");
 	expect(tree.rows).toContainEqual({ id: note.id, current: true });
+});
+
+it("拖入页面后使用移动结果展开目标的祖先链", async () => {
+	const tree = await openTree([]);
+	const previousTargetId = "jvm.md" as PageId;
+	tree.view["moveAsChild"](note.id, previousTargetId);
+	await vi.waitFor(() => expect(tree.saved()).toEqual([folder.id]));
+	expect(tree.movePage).toHaveBeenCalledWith(note.id, previousTargetId);
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
 });
 
 it("首次重绘保留折叠状态，切换笔记和主动定位仍会展开祖先链", async () => {
