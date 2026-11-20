@@ -165,6 +165,59 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 4. 下载 Release 的三个独立文件，核对各文件的 SHA-256，再用 `gh attestation verify <文件> --repo aStudyMachine/sub-page --source-digest <提交SHA> --signer-workflow aStudyMachine/sub-page/.github/workflows/release.yml` 逐个验证构建来源。
 5. 首次上架时，用 Obsidian 社区开发者门户关联 GitHub 并提交公开仓库。等初审通过后，在门户中发布条目，再从 Obsidian 客户端检索与安装。已有条目可先用门户的分支预览。**版本触发 Error 级问题时，修复后升版发新 Release**。 [Obsidian 插件提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
+### Release 说明的统一格式
+
+- `CHANGELOG.md` 与 GitHub Release 说明**只写变更内容**（新增 / 修复 / 变更 / 兼容性）。「本轮不修的项及其理由」「跑过的验证过程」留在仓库待办，不要塞进发布物：在一个没有用户可见变化的补丁版发布说明里放三十行内部申辩，读者只会困惑。
+
+GitHub Release 说明固定**英文在前、中文在后**，各用 H2，中间空一行：
+
+```markdown
+## English
+
+### New
+
+- ...
+
+### Changed
+
+- ...
+
+### Fixed
+
+- ...
+
+### Compatibility
+
+- ...
+
+## 简体中文
+
+### 新增
+
+- ...
+
+### 变更
+
+- ...
+
+### 修复
+
+- ...
+
+### 兼容性
+
+- ...
+```
+
+- 章节按需出现，顺序固定为 New → Changed → Fixed → Compatibility（中文对应新增 → 变更 →
+  修复 → 兼容性），空章节省略；兼容性写**该版本发布当时**的真实最低版本与平台，不用当前
+  状态改写历史。
+- 只写普通用户能直接感知的功能、行为变化与兼容性。安全修复可以保留一条简短的
+  `Fixed` / `修复`（0.1.5 的 KaTeX 公告即此）；内部维护、构建证明、安装步骤、README
+  链接、体积说明不写进 Release 说明。
+- 没有用户可见变化的版本（如 0.1.3 / 0.1.6）写一句双语「仅内部维护，无用户可见变化」加
+  兼容性，不硬凑 New / Changed 条目。
+
 ## 代码风格
 
 - 注释写「为什么」，不写「做什么」。代码本身说得清的事不要复述。
