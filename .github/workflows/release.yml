@@ -9,6 +9,9 @@ on:
         description: 只构建并打印校验和
         type: boolean
         default: true
+      expected_checksums_digest:
+        description: 正式发布时填写 dry run 输出的 checksums_digest
+        type: string
 
 permissions:
   contents: write
@@ -66,10 +69,17 @@ jobs:
           test "$COUNT" -le 3
 
       - name: 校验和
+        env:
+          EXPECTED_CHECKSUMS_DIGEST: ${{ inputs.expected_checksums_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          for file in main.js manifest.json styles.css; do
-            echo "$(sha256sum "$file")"
-          done
+          sha256sum main.js manifest.json styles.css | tee "$RUNNER_TEMP/sub-page-checksums.txt"
+          digest=$(sha256sum "$RUNNER_TEMP/sub-page-checksums.txt" | cut -d' ' -f1)
+          echo "checksums_digest=$digest"
+          if [[ "$DRY_RUN" == "false" && "$digest" != "$EXPECTED_CHECKSUMS_DIGEST" ]]; then
+            echo "::error::发布产物与 dry run 的校验和不一致"
+            exit 1
+          fi
 
       - name: 打包
         if: inputs.dry_run == false

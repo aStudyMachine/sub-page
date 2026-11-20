@@ -160,8 +160,8 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 顺序（不要跳）：
 
 1. 运行 `npm run bump -- <x.y.z>`，添加 `docs/release-notes/<x.y.z>.md`，更新变更记录，在样例库验收后提交并推送 `dev`。
-2. 合并并推送 `main`，在该分支运行 `dry_run`，记录提交 SHA 与三个产物的 SHA-256。
-3. 为该提交创建并推送标签 `<x.y.z>`。从同一提交关闭 `dry_run` 触发发布。工作流会核对标签指向本次构建的提交。
+2. 合并并推送 `main`，在该分支运行 `dry_run`，记录提交 SHA、三个产物的 SHA-256 和 `checksums_digest`。
+3. 为该提交创建并推送标签 `<x.y.z>`。从同一提交关闭 `dry_run` 触发发布，填入上一步的 `checksums_digest`。工作流会核对标签目标和产物校验和。
 4. 下载 Release 的三个独立文件与 ZIP，核对文件 SHA-256 和 ZIP 内的文件内容，并用 `gh attestation verify sub-page-<x.y.z>.zip --repo aStudyMachine/sub-page` 验证构建来源。
 5. 首次上架时，用 Obsidian 社区开发者门户关联 GitHub 并提交公开仓库。等初审通过后，在门户中发布条目，再从 Obsidian 客户端检索与安装。已有条目可先用门户的分支预览。**版本触发 Error 级问题时，修复后升版发新 Release**。 [Obsidian 插件提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
