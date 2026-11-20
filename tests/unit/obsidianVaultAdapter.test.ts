@@ -1,9 +1,27 @@
 import { expect, it, vi } from "vitest";
+
+vi.stubGlobal("window", globalThis);
 import { type App, TFile, TFolder } from "obsidian";
 import { ObsidianVaultAdapter } from "../../src/adapters/obsidianVaultAdapter";
 import { PageService } from "../../src/core/pageService";
 import { DEFAULT_SETTINGS } from "../../src/models/settings";
 import { LEGACY_ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
+
+it("区分系统回收失败与旧版成功返回值，永久删除需要显式选择", async () => {
+	const file = Object.assign(new TFile(), { path: "note.md" });
+	const trashFile = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(undefined);
+	const remove = vi.fn();
+	const adapter = new ObsidianVaultAdapter({
+		vault: { getAbstractFileByPath: () => file, delete: remove },
+		fileManager: { trashFile },
+	} as unknown as App);
+
+	await expect(adapter.trash(file.path)).rejects.toThrow(file.path);
+	await expect(adapter.trash(file.path)).resolves.toBeUndefined();
+	expect(remove).not.toHaveBeenCalled();
+	await adapter.trash(file.path, false);
+	expect(remove).toHaveBeenCalledWith(file, true);
+});
 
 it("覆盖 AGENTS.md 中途失败时保留已校验的原文备份", async () => {
 	const path = "AGENTS.md";

@@ -2,7 +2,6 @@ import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
 import type SubPagePlugin from "../main";
 import { PageNode } from "../models/pageNode";
 import { PageMetadata } from "../models/pageMetadata";
-import { PageId } from "../models/pageId";
 import { parseSubPageBlock, SubPageBlockConfig } from "../utils/subPageConfigParser";
 import { renderPageIcon } from "../components/pageIcon";
 import { openCreate, openPage, pair } from "../components/pageContextMenu";

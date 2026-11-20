@@ -155,13 +155,18 @@ export async function unpair(plugin: SubPagePlugin, node: PageNode): Promise<voi
 
 async function copyLink(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 	if (!node.filePath) return;
-	const target = plugin.app.metadataCache.fileToLinktext(
-		plugin.app.vault.getAbstractFileByPath(node.filePath) as TFile,
-		"",
-		true,
-	);
-	await navigator.clipboard.writeText(`[[${target}]]`);
-	new Notice(plugin.t("notice.linkCopied"));
+	const file = plugin.app.vault.getAbstractFileByPath(node.filePath);
+	if (!(file instanceof TFile)) {
+		new Notice(plugin.t("notice.linkMissing"));
+		return;
+	}
+	const target = plugin.app.metadataCache.fileToLinktext(file, "", true);
+	try {
+		await navigator.clipboard.writeText(`[[${target}]]`);
+		new Notice(plugin.t("notice.linkCopied"));
+	} catch {
+		new Notice(plugin.t("notice.linkCopyFailed"));
+	}
 }
 
 async function openInNewTab(plugin: SubPagePlugin, node: PageNode): Promise<void> {

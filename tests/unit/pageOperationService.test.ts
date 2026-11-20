@@ -535,6 +535,31 @@ describe("移动", () => {
 	});
 });
 
+it("移动已完成时保留损坏的顺序文件，并返回顺序未保存的提示", async () => {
+	const h = await harness(sampleVault());
+	await h.order.setKeys("", ["首页.md", "项目A"]);
+	await h.vault.writeText(ORDER_FILE_NAME, "{broken");
+
+	const result = await h.ops.movePage(id("首页.md"), id("项目A"));
+
+	expect(result).toMatchObject({ ok: true, value: "项目A/首页.md", warning: expect.stringContaining("顺序") });
+	expect(await h.vault.exists("项目A/首页.md")).toBe(true);
+	expect(await h.vault.readText(ORDER_FILE_NAME)).toBe("{broken");
+});
+
+it("回收失败时保留笔记和现有手动顺序", async () => {
+	const h = await harness(sampleVault());
+	await h.order.setKeys("", ["首页.md", "项目A"]);
+	const before = await h.vault.readText(ORDER_FILE_NAME);
+	h.vault.trash = async () => { throw new Error("系统回收失败"); };
+
+	const result = await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });
+
+	expect(result).toMatchObject({ ok: false, reason: "io-error" });
+	expect(await h.vault.exists("首页.md")).toBe(true);
+	expect(await h.vault.readText(ORDER_FILE_NAME)).toBe(before);
+});
+
 describe("删除", () => {
 	it("删叶子页面只删那一个文件", async () => {
 		const h = await harness(sampleVault());

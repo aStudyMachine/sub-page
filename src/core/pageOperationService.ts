@@ -259,9 +259,14 @@ export class PageOperationService {
 		} catch (error) {
 			return fail("io-error", `移动失败：${messageOf(error)}`);
 		}
-		await this.recordMove(node, targetParentId ?? "", resultId);
+		let warning: string | undefined;
+		try {
+			await this.recordMove(node, targetParentId ?? "", resultId);
+		} catch (error) {
+			warning = "页面已移动，顺序或展开状态未能保存：" + messageOf(error);
+		}
 		await this.deps.refresh();
-		return ok(resultId);
+		return warning ? { ok: true, value: resultId, warning } : ok(resultId);
 	}
 
 	private exceedsFolderDepth(node: PageNode, targetDepth: number): boolean {

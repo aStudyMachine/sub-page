@@ -44,7 +44,7 @@ export class PageService {
 	metadataEpoch = 0;
 
 	private unsubscribe: (() => void) | null = null;
-	private pending: ReturnType<typeof setTimeout> | null = null;
+	private pending: number | null = null;
 	private refreshing: Promise<void> | null = null;
 	private queued = false;
 	private started = false;
@@ -86,7 +86,7 @@ export class PageService {
 	dispose(): void {
 		this.unsubscribe?.();
 		this.unsubscribe = null;
-		if (this.pending) clearTimeout(this.pending);
+		if (this.pending !== null) window.clearTimeout(this.pending);
 		this.pending = null;
 		this.started = false;
 		this.failedCollapses.clear();
@@ -208,8 +208,8 @@ export class PageService {
 
 	private scheduleRefresh(): void {
 		const delay = this.deps.debounceMs ?? 150;
-		if (this.pending) clearTimeout(this.pending);
-		this.pending = setTimeout(() => {
+		if (this.pending !== null) window.clearTimeout(this.pending);
+		this.pending = window.setTimeout(() => {
 			this.pending = null;
 			void this.refresh();
 		}, delay);

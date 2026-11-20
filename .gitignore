@@ -17,7 +17,6 @@ test-vault/
 .zcode/
 .workbuddy/
 .agents/*
-!.agents/plan/
 !.agents/skills/
 
 .env

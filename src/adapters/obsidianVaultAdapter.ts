@@ -163,11 +163,11 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		await new Promise<void>((resolve, reject) => {
 			const ref = vault.on("rename", (file) => {
 				if (file !== target || file.path !== destination) return;
-				clearTimeout(timer);
+				window.clearTimeout(timer);
 				vault.offref(ref);
 				resolve();
 			});
-			const timer = setTimeout(() => {
+			const timer = window.setTimeout(() => {
 				vault.offref(ref);
 				reject(new Error(`未能确认笔记已移至：${destination}`));
 			}, 10_000);
@@ -178,8 +178,9 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
 		if (!target) return;
 		if (system) {
-			// 走宿主的回收站设置：文件进系统回收站或库内 .trash，两种都能反悔。
-			await this.app.fileManager.trashFile(target);
+			// 1.15.1 起系统回收失败返回 false，旧版类型仍声明 void。
+			const result: unknown = await this.app.fileManager.trashFile(target);
+			if (result === false) throw new Error(target.path);
 			return;
 		}
 		// 永久删除必须绕开 fileManager —— 它只会把文件挪进回收站。
@@ -191,7 +192,7 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
 		if (!(file instanceof TFile)) return null;
 		const cache = this.app.metadataCache.getFileCache(file);
-		return (cache?.frontmatter as Record<string, unknown> | undefined) ?? null;
+		return cache?.frontmatter ?? null;
 	}
 
 	async updateFrontMatter(path: string, mutate: (frontmatter: Record<string, unknown>) => void): Promise<void> {

@@ -19,6 +19,15 @@ describe("名称校验", () => {
 		}
 	});
 
+	it("校验和扫描都会拒绝 32 个控制字符", () => {
+		for (let code = 0; code < 32; code++) {
+			const character = String.fromCharCode(code);
+			const name = "a" + character + "b";
+			expect(checkName(name)).toMatchObject({ problem: "illegal-char", detail: character });
+			expect(isScannableName(name)).toBe(false);
+		}
+	});
+
 	it("拒绝 . 与 ..", () => {
 		expect(checkName(".").problem).toBe("dot-name");
 		expect(checkName("..").problem).toBe("dot-name");
