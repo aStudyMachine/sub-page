@@ -2,7 +2,7 @@ import { ORDER_FILE_NAME } from "../../src/repository/pageOrderStore";
 import { describe, expect, it, vi } from "vitest";
 import { PageService } from "../../src/core/pageService";
 import { PageId } from "../../src/models/pageId";
-import { DEFAULT_SETTINGS } from "../../src/models/settings";
+import { DEFAULT_SETTINGS, migrateSettings } from "../../src/models/settings";
 import { FakeVault, sampleVault } from "../fixtures/fakeVault";
 
 const id = (value: string) => value as PageId;
@@ -22,6 +22,103 @@ function makeService(vault: FakeVault, overrides: Partial<typeof DEFAULT_SETTING
 }
 
 const settle = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("自动还原无子页面的笔记", () => {
+	it("旧设置默认开启，保留明确关闭的设置", () => {
+		expect(migrateSettings({}).settings.collapseEmptyParents).toBe(true);
+		expect(migrateSettings({ collapseEmptyParents: false }).settings.collapseEmptyParents).toBe(false);
+	});
+
+	it("启动时还原已有配对，保留手动排序", async () => {
+		const vault = new FakeVault({ "A/A.md": "原笔记", "B.md": "" });
+		const { service } = makeService(vault, { collapseEmptyParents: false });
+		await service.start();
+		try {
+			await service.operations.reorderScope(null, ["B.md", "A"]);
+		} finally {
+			service.dispose();
+		}
+		const reopened = makeService(vault).service;
+		await reopened.start();
+		try {
+			expect(reopened.getRoots().map((node) => node.id)).toEqual(["B.md", "A.md"]);
+			expect(reopened.order.getKeys("")).toEqual(["B.md", "A.md"]);
+			expect(vault.content("A.md")).toBe("原笔记");
+			expect(vault.folderPaths()).not.toContain("A");
+		} finally {
+			reopened.dispose();
+		}
+	});
+
+	it.each([true, false])("删除最后一个子页面后按设置处理目录（%s）", async (collapseEmptyParents) => {
+		const vault = new FakeVault({ "A/A.md": "", "A/子.md": "" });
+		const { service } = makeService(vault, { collapseEmptyParents });
+		await service.start();
+		try {
+			await vault.trash("A/子.md");
+			await vi.waitFor(() => expect(service.getNode(id("A/子.md"))).toBeUndefined());
+			expect(service.getNode(id(collapseEmptyParents ? "A.md" : "A"))?.kind).toBe(
+				collapseEmptyParents ? "leaf" : "parent",
+			);
+			expect(vault.folderPaths().includes("A")).toBe(!collapseEmptyParents);
+		} finally {
+			service.dispose();
+		}
+	});
+
+	it("保留含附件、隐藏文件、子目录或存在同名冲突的配对", async () => {
+		const vault = new FakeVault({
+			"A/A.md": "", "A/附件.png": "", "B/B.md": "", "B/.hidden": "",
+			"C/C.md": "", "C.md": "外层", "D/D.md": "",
+		});
+		vault.seedFolder("D/空目录");
+		const { service } = makeService(vault);
+		await service.start();
+		try {
+			expect(vault.folderPaths()).toEqual(expect.arrayContaining(["A", "B", "C", "D", "D/空目录"]));
+			expect(vault.content("C.md")).toBe("外层");
+			expect(vault.filePaths()).toContain("B/.hidden");
+		} finally {
+			service.dispose();
+		}
+	});
+
+	it("清理前发现新内容时将笔记移回", async () => {
+		const vault = new FakeVault({ "A/A.md": "原笔记" });
+		const trashEmptyFolder = vault.trashEmptyFolder.bind(vault);
+		vi.spyOn(vault, "trashEmptyFolder").mockImplementation(async (path) => {
+			vault.seedFile("A/新附件.png");
+			return trashEmptyFolder(path);
+		});
+		const { service } = makeService(vault);
+		await service.start();
+		try {
+			expect(service.getNode(id("A"))?.kind).toBe("parent");
+			expect(vault.content("A/A.md")).toBe("原笔记");
+			expect(vault.filePaths()).toContain("A/新附件.png");
+		} finally {
+			service.dispose();
+		}
+	});
+
+	it("回滚引发的刷新不会反复尝试清理，手动重建可以重试", async () => {
+		const vault = new FakeVault({ "A/A.md": "原笔记", "A/子.md": "" });
+		const trash = vi.spyOn(vault, "trashEmptyFolder").mockRejectedValueOnce(new Error("目录被占用"));
+		const { service, problems } = makeService(vault);
+		await service.start();
+		try {
+			await vault.trash("A/子.md");
+			await vi.waitFor(() => expect(problems).toHaveLength(1));
+			await settle();
+			expect(trash).toHaveBeenCalledTimes(1);
+			expect(vault.content("A/A.md")).toBe("原笔记");
+			await service.rebuild();
+			expect(vault.content("A.md")).toBe("原笔记");
+		} finally {
+			service.dispose();
+		}
+	});
+});
 
 describe("启动与刷新", () => {
 	it("启动后索引可用", async () => {
@@ -133,7 +230,7 @@ it("自己写顺序文件不触发刷新", async () => {
 
 describe("页面根切换", () => {
 	it("切换后索引与顺序都换成新根", async () => {
-		const vault = new FakeVault({ "A/a.md": "", "B/b.md": "" });
+		const vault = new FakeVault({ "A/甲.md": "", "B/乙.md": "" });
 		const settings = { ...DEFAULT_SETTINGS };
 		const service = new PageService({
 			adapter: vault,
@@ -147,14 +244,14 @@ describe("页面根切换", () => {
 
 		settings.pageRoot = "B";
 		await service.setPageRoot("B");
-		expect(service.getRoots().map((n) => n.title)).toEqual(["b"]);
+		expect(service.getRoots().map((n) => n.title)).toEqual(["乙"]);
 		service.dispose();
 	});
 });
 
 describe("查询", () => {
 	it("按文件路径找节点", async () => {
-		const { service } = makeService(sampleVault());
+		const { service } = makeService(sampleVault(), { collapseEmptyParents: false });
 		await service.start();
 		expect(service.nodeForFilePath("项目A/设计/设计.md")?.id).toBe("项目A/设计");
 		service.dispose();

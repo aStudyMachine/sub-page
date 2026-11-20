@@ -37,7 +37,7 @@ export class SubPageSettingTab extends PluginSettingTab {
 			this.subPage.refreshLanguage();
 			this.update();
 		}
-		if (key === "showEmptyFolders") await this.subPage.refreshIndex();
+		if (key === "showEmptyFolders" || key === "collapseEmptyParents") await this.subPage.refreshIndex();
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -84,6 +84,11 @@ export class SubPageSettingTab extends PluginSettingTab {
 						name: t("settings.confirmDelete.name"),
 						desc: t("settings.confirmDelete.desc"),
 						control: { type: "toggle", key: "confirmDelete" },
+					},
+					{
+						name: t("settings.collapseEmptyParents.name"),
+						desc: t("settings.collapseEmptyParents.desc"),
+						control: { type: "toggle", key: "collapseEmptyParents" },
 					},
 					{
 						name: t("settings.templatePath.name"),

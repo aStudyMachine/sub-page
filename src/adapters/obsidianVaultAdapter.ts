@@ -42,6 +42,20 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		return normalized === "" ? "/" : obsidianNormalize(normalized);
 	}
 
+	async listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }> {
+		return this.app.vault.adapter.list(normalizePath(path));
+	}
+
+	async trashEmptyFolder(path: string): Promise<boolean> {
+		const folder = this.app.vault.getAbstractFileByPath(this.key(path));
+		if (!(folder instanceof TFolder)) return false;
+		const { files, folders } = await this.listFolderContents(path);
+		if (files.length || folders.length) return false;
+		// 库内回收站避免使用可能永久删除目录的宿主偏好。
+		await this.app.vault.trash(folder, false);
+		return true;
+	}
+
 	async exists(path: string): Promise<boolean> {
 		const normalized = normalizePath(path);
 		if (normalized === "") return true;
@@ -103,10 +117,26 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 	}
 
 	async renameFile(from: string, to: string): Promise<void> {
-		const target = this.app.vault.getAbstractFileByPath(normalizePath(from));
+		const vault = this.app.vault;
+		const target = vault.getAbstractFileByPath(normalizePath(from));
 		if (!(target instanceof TFile)) throw new Error(`文件不存在：${from}`);
-		// 必须走 fileManager：它会同步更新所有指向这个笔记的 [[链接]]。
-		await this.app.fileManager.renameFile(target, normalizePath(to));
+		const destination = normalizePath(to);
+		await this.app.fileManager.renameFile(target, destination);
+		if (target.path === destination) return;
+
+		// 已有链接更新时，宿主可能只将重命名入队就返回。
+		await new Promise<void>((resolve, reject) => {
+			const ref = vault.on("rename", (file) => {
+				if (file !== target || file.path !== destination) return;
+				clearTimeout(timer);
+				vault.offref(ref);
+				resolve();
+			});
+			const timer = setTimeout(() => {
+				vault.offref(ref);
+				reject(new Error(`未能确认笔记已移至：${destination}`));
+			}, 10_000);
+		});
 	}
 
 	async trash(path: string, system = true): Promise<void> {

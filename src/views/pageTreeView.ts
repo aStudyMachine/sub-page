@@ -13,7 +13,6 @@ import { hintSeen, markHintSeen } from "../hints";
 import { findConflictingPlugins } from "../utils/conflictingPlugins";
 
 export const PAGE_TREE_VIEW_TYPE = "sub-page-tree";
-const RENAME_DOUBLE_CLICK_MS = 250;
 
 /**
  * 侧栏。只做三件事：读 plugin.service 的索引 → 构建行 → 把交互转交给门面。
@@ -213,19 +212,7 @@ export class PageTreeView extends ItemView {
 			metadata: this.metadataCache.get(node.id) ?? node.metadata,
 		});
 		this.listEl.appendChild(row);
-		// 保留宿主对双击位置的判断，只收紧触发改名的时间窗口。
-		let firstClickAt: number | null = null;
-		row.addEventListener("click", (event) => {
-			if (event.detail === 1) firstClickAt = event.timeStamp;
-			this.onRowClick(event, node);
-		});
-		row.addEventListener("dblclick", (event) => {
-			const elapsed = firstClickAt === null ? Infinity : event.timeStamp - firstClickAt;
-			firstClickAt = null;
-			if (elapsed > RENAME_DOUBLE_CLICK_MS) return;
-			event.preventDefault();
-			this.openRename(node);
-		});
+		row.addEventListener("click", (event) => this.onRowClick(event, node));
 		row.addEventListener("contextmenu", (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -260,11 +247,11 @@ export class PageTreeView extends ItemView {
 	private onRowClick(event: MouseEvent, node: PageNode): void {
 		this.focusId = node.id;
 		const target = event.target as HTMLElement;
-		const clickedBranchIcon = node.childIds.length > 0 && !this.searchTerm.trim() && target.closest(".sp-icon");
-		const togglesBranch = node.kind === "group" || clickedBranchIcon;
-		if (togglesBranch) this.toggle(node);
+		const canToggle = node.childIds.length > 0 && !this.searchTerm.trim();
+		const opensNote = node.kind !== "group" && !(canToggle && target.closest(".sp-icon"));
+		if (node.kind === "group" || (node.kind === "parent" && canToggle)) this.toggle(node);
 		this.setFocusRing(node.id);
-		if (!togglesBranch) void openPage(this.plugin, node);
+		if (opensNote) void openPage(this.plugin, node);
 	}
 
 	private toggle(node: PageNode): void {

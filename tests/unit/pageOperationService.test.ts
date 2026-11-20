@@ -460,6 +460,23 @@ describe("移动", () => {
 		expect(h.order.getKeys("项目A/接收页")).toEqual(["笔记规范.md"]);
 	});
 
+	it("拖入叶子页面时复用已有的同名空目录", async () => {
+		const vault = new FakeVault({ "jvm/1.md": "原笔记", "jvm/2.md": "子笔记" });
+		vault.seedFolder("jvm/1");
+		const h = await harness(vault);
+		expect(await h.ops.movePage(id("jvm/2.md"), id("jvm/1.md"))).toEqual({ ok: true, value: "jvm/1/2.md" });
+		expect(vault.content("jvm/1/1.md")).toBe("原笔记");
+		expect(vault.content("jvm/1/2.md")).toBe("子笔记");
+		expect(h.index.getNode(id("jvm/1/2.md"))?.parentId).toBe("jvm/1");
+	});
+
+	it("拖入叶子页面时保留有隐藏文件的同名目录", async () => {
+		const vault = new FakeVault({ "1.md": "原笔记", "2.md": "子笔记", "1/.hidden": "现有文件" });
+		const h = await harness(vault);
+		expect(await h.ops.movePage(id("2.md"), id("1.md"))).toMatchObject({ ok: false, reason: "name-conflict" });
+		expect(vault.filePaths()).toEqual(["1.md", "1/.hidden", "2.md"]);
+	});
+
 	it("移入叶子页面的整棵子树保留手动顺序", async () => {
 		const h = await harness(sampleVault());
 		await h.ops.reorderScope(id("项目A"), ["需求.md", "设计"]);
@@ -470,8 +487,9 @@ describe("移动", () => {
 		expect(h.order.getKeys("项目A")).toEqual([]);
 	});
 
-	it("拖入叶子页面失败时恢复原笔记，不留下配对目录", async () => {
+	it.each([false, true])("拖入失败时恢复原笔记并保留原有目录状态（目录已存在：%s）", async (existingFolder) => {
 		const vault = sampleVault();
+		if (existingFolder) vault.seedFolder("首页");
 		const h = await harness(vault);
 		const renameFile = vault.renameFile.bind(vault);
 		vi.spyOn(vault, "renameFile").mockImplementation(async (from, to) => {
@@ -482,7 +500,7 @@ describe("移动", () => {
 			ok: false, reason: "io-error",
 		});
 		expect(vault.filePaths()).toEqual(expect.arrayContaining(["首页.md", "笔记规范.md"]));
-		expect(vault.folderPaths()).not.toContain("首页");
+		expect(vault.folderPaths().includes("首页")).toBe(existingFolder);
 	});
 
 	it("配对后放不下整棵子树时保留源和目标", async () => {

@@ -48,6 +48,7 @@ export class PageService {
 	private refreshing: Promise<void> | null = null;
 	private queued = false;
 	private started = false;
+	private readonly failedCollapses = new Set<string>();
 
 	constructor(private readonly deps: PageServiceDeps) {
 		this.order = new PageOrderStore(deps.adapter, deps.settings().pageRoot, deps.orderPath);
@@ -57,10 +58,11 @@ export class PageService {
 			order: this.order,
 			getNode: (id) => this.index.getNode(id),
 			getChildren: (scope) => this.index.getChildren(scope),
-				getPageRoot: () => this.deps.settings().pageRoot,
-				getExcludedFolders: () => this.deps.settings().excludedFolders,
-				refresh: () => this.refresh(),
-				renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
+			getPageRoot: () => this.deps.settings().pageRoot,
+			getExcludedFolders: () => this.deps.settings().excludedFolders,
+			collapseEmptyParents: () => this.deps.settings().collapseEmptyParents,
+			refresh: () => this.refresh(),
+			renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
 		});
 	}
 
@@ -87,12 +89,14 @@ export class PageService {
 		if (this.pending) clearTimeout(this.pending);
 		this.pending = null;
 		this.started = false;
+		this.failedCollapses.clear();
 	}
 
 	/** 页面根变了：顺序文件、索引、元数据缓存全部要跟着换。 */
 	async setPageRoot(pageRoot: string): Promise<void> {
 		const root = normalizePath(pageRoot);
 		if (root === this.index.pageRoot) return;
+		this.failedCollapses.clear();
 		this.order.setPageRoot(root);
 		this.metadata.clear();
 		await this.order.load();
@@ -101,6 +105,7 @@ export class PageService {
 	}
 
 	async rebuild(): Promise<void> {
+		this.failedCollapses.clear();
 		await this.order.load();
 		if (this.order.problem) this.deps.onProblem?.(this.order.problem);
 		await this.refresh();
@@ -128,11 +133,35 @@ export class PageService {
 	private async doRefresh(): Promise<void> {
 		const settings = this.deps.settings();
 		const started = Date.now();
-		const snapshot = await scan(this.deps.adapter, settings.pageRoot, {
+		const readSnapshot = () => scan(this.deps.adapter, settings.pageRoot, {
 			order: this.order.current,
 			excludedFolders: settings.excludedFolders,
 			showEmptyFolders: settings.showEmptyFolders,
 		});
+		let snapshot = await readSnapshot();
+		const candidates = new Set<string>();
+		if (settings.collapseEmptyParents) {
+			let rescan = false;
+			for (const node of snapshot.nodes.values()) {
+				if (node.kind !== "parent" || node.childIds.length > 0) continue;
+				const current = this.deps.settings();
+				if (!current.collapseEmptyParents || current.pageRoot !== settings.pageRoot) break;
+				candidates.add(node.folderPath);
+				if (this.failedCollapses.has(node.folderPath)) continue;
+				const result = await this.operations.collapseEmptyParent(node, settings.pageRoot);
+				if (result.ok || result.reason === "io-error") rescan = true;
+				if (result.ok && result.warning) this.deps.onProblem?.(result.warning);
+				if (!result.ok && result.reason === "io-error") {
+					// 回滚也会触发重扫，保留失败记录以免在同一空目录反复移动笔记。
+					this.failedCollapses.add(node.folderPath);
+					this.deps.onProblem?.(result.message);
+				}
+			}
+			if (rescan) snapshot = await readSnapshot();
+		}
+		for (const path of this.failedCollapses) {
+			if (!candidates.has(path)) this.failedCollapses.delete(path);
+		}
 		this.lastScanMs = Date.now() - started;
 		this.index.replace(snapshot);
 		const warnings = snapshot.warnings.filter((warning) => warning.kind !== "case-conflict");

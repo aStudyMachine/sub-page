@@ -80,6 +80,11 @@ function renderBlock(
 		if (node.kind !== "parent") {
 			const box = el.createDiv({ cls: "sp-block-empty" });
 			box.createSpan({ text: plugin.t("block.notParent") });
+			if (node.kind === "leaf" && plugin.settings.collapseEmptyParents) {
+				const create = box.createEl("button", { text: plugin.t("block.create"), cls: "mod-cta" });
+				create.addEventListener("click", () => openCreate(plugin, node.id));
+				return;
+			}
 			const pair = box.createEl("button", { text: plugin.t("block.pair"), cls: "mod-cta" });
 			pair.addEventListener("click", async () => {
 				const template = await plugin.loadTemplate();

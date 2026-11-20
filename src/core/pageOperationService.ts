@@ -1,5 +1,5 @@
-import { FolderListing, VaultAdapter } from "../adapters/vaultAdapter";
-import { PageId } from "../models/pageId";
+import { VaultAdapter } from "../adapters/vaultAdapter";
+import { childIdOf, PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import { PageOrderStore } from "../repository/pageOrderStore";
 import { DEFAULT_MAX_DEPTH, isExcludedFolder } from "../repository/pageScanner";
@@ -33,6 +33,7 @@ export interface OperationDeps {
 	getChildren(scope: PageId | null): PageNode[];
 	getPageRoot(): string;
 	getExcludedFolders?(): string[];
+	collapseEmptyParents?(): boolean;
 	refresh(): Promise<void>;
 	/**
 	 * 整棵子树的 id 变了（改名 / 移动）。展开状态是按 id 存进设置里的，
@@ -49,7 +50,7 @@ export interface OperationDeps {
 export class PageOperationService {
 	private readonly adapter: VaultAdapter;
 	private readonly order: PageOrderStore;
-	private readonly pairing = new Set<PageId>();
+	private readonly changingPairs = new Set<PageId>();
 
 	constructor(private readonly deps: OperationDeps) {
 		this.adapter = deps.adapter;
@@ -147,13 +148,6 @@ export class PageOperationService {
 		const filePath = joinPath(parentFolder, title + ".md");
 		await this.adapter.createFile(filePath, renderTemplate(options.template, title));
 		return this.relativeId(filePath) as PageId;
-	}
-
-	private async trashEmptyFolder(path: string): Promise<void> {
-		const listing = await this.adapter.listFolder(path);
-		if (listing && listing.files.length === 0 && listing.folders.length === 0) {
-			await this.adapter.trash(path);
-		}
 	}
 
 	// ---------------------------------------------------------------- 改名
@@ -332,11 +326,19 @@ export class PageOperationService {
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		if (node.kind === "parent") return ok(id);
 
-		if (node.kind === "leaf") return this.pairLeaf(node);
+		const autoCollapse = this.deps.collapseEmptyParents?.();
+		const autoCollapseProblem = "已开启自动还原，请先添加子页面再配对";
+		if (node.kind === "leaf") {
+			return autoCollapse ? fail("not-allowed", autoCollapseProblem) : this.pairLeaf(node);
+		}
 
 		const filePath = joinPath(node.folderPath, basename(node.folderPath) + ".md");
 		if (await this.adapter.exists(filePath)) return fail("name-conflict", "这个目录已经有同名笔记了");
 		try {
+			if (autoCollapse && node.childIds.length === 0) {
+				const { files, folders } = await this.adapter.listFolderContents(node.folderPath);
+				if (files.length === 0 && folders.length === 0) return fail("not-allowed", autoCollapseProblem);
+			}
 			await this.adapter.createFile(filePath, renderTemplate(template, basename(node.folderPath)));
 		} catch (error) {
 			return fail("io-error", `创建页面失败：${messageOf(error)}`);
@@ -358,11 +360,18 @@ export class PageOperationService {
 		if (isExcludedFolder(node.title, excluded) || node.depth > DEFAULT_MAX_DEPTH) {
 			return fail("not-allowed", "同名目录超出页面树扫描范围，无法配对");
 		}
-		if (this.pairing.has(node.id)) return fail("not-allowed", "此页面正在创建同名目录");
-		this.pairing.add(node.id);
+		if (this.changingPairs.has(node.id)) return fail("not-allowed", "此页面正在变更配对");
+		this.changingPairs.add(node.id);
 		try {
-			if (await this.adapter.exists(folder)) return fail("name-conflict", "已经有了同名目录");
-			await this.adapter.createFolder(folder);
+			const alreadyExists = await this.adapter.exists(folder);
+			if (alreadyExists) {
+				const { files, folders } = await this.adapter.listFolderContents(folder);
+				if (files.length || folders.length) {
+					return fail("name-conflict", "同名目录内已有内容，无法自动配对");
+				}
+			} else {
+				await this.adapter.createFolder(folder);
+			}
 
 			let paired = false;
 			const parentId = this.relativeId(folder) as PageId;
@@ -374,7 +383,7 @@ export class PageOperationService {
 			} catch (error) {
 				try {
 					if (paired) await this.adapter.renameFile(to, from);
-					await this.trashEmptyFolder(folder);
+					if (!alreadyExists) await this.adapter.trashEmptyFolder(folder);
 				} catch (rollbackError) {
 					await this.deps.refresh();
 					return fail("io-error", `操作失败：${messageOf(error)}。恢复失败：${messageOf(rollbackError)}`);
@@ -399,44 +408,58 @@ export class PageOperationService {
 		} catch (error) {
 			return fail("io-error", `配对失败：${messageOf(error)}`);
 		} finally {
-			this.pairing.delete(node.id);
+			this.changingPairs.delete(node.id);
 		}
 	}
 
-	/** 解除配对：父页面降级为叶子页面。目录必须为空，否则先让用户把子页面移走。 */
 	async unpairPage(id: PageId): Promise<OpResult<PageId>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		if (node.kind !== "parent") return fail("not-allowed", "只有父页面可以解除配对");
 
-		const listing: FolderListing | null = await this.adapter.listFolder(node.folderPath);
-		if (!listing) return fail("not-found", "读不到这个目录");
-		const leftovers =
-			listing.folders.length +
-			listing.files.filter((file) => isMarkdownFile(file.name) && file.path !== node.filePath).length;
-		if (leftovers > 0) return fail("not-allowed", "目录里还有内容，先把子页面移走再解除配对");
+		const result = await this.collapseEmptyParent(node);
+		await this.deps.refresh();
+		return result;
+	}
 
+	/** 供索引发布前收尾。这里不刷新，避免重入正在执行的扫描。 */
+	async collapseEmptyParent(node: PageNode, pageRoot = this.deps.getPageRoot()): Promise<OpResult<PageId>> {
+		const from = node.filePath!;
 		const parentFolder = dirname(node.folderPath);
+		const to = joinPath(parentFolder, basename(from));
+		const leafId = childIdOf(node.parentId, basename(to));
+		if (this.changingPairs.has(leafId)) return fail("not-allowed", "此页面正在变更配对");
+		this.changingPairs.add(leafId);
 		try {
-			await this.adapter.renameFile(node.filePath!, joinPath(parentFolder, node.title + ".md"));
+			const { files, folders } = await this.adapter.listFolderContents(node.folderPath);
+			if (folders.length || files.length !== 1 || files[0] !== from) {
+				return fail("not-allowed", "目录内仍有其他文件或子目录");
+			}
+			if (await this.adapter.exists(to) || await this.checkConflict(parentFolder, node.title, [node.folderPath])) {
+				return fail("name-conflict", `目标位置已经有「${node.title}」了`);
+			}
+			await this.adapter.renameFile(from, to);
+			try {
+				if (!await this.adapter.trashEmptyFolder(node.folderPath)) throw new Error("目录内容已变更");
+			} catch (error) {
+				try {
+					await this.adapter.renameFile(to, from);
+				} catch (rollbackError) {
+					return fail("io-error", `笔记已移至 ${to}，恢复失败：${messageOf(rollbackError)}`);
+				}
+				return fail("io-error", `解除配对失败：${messageOf(error)}`);
+			}
+			try {
+				await this.order.collapseScope(pageRoot, node.id, scopeOfNode(node), childKey(node), basename(to));
+			} catch (error) {
+				return { ok: true, value: leafId, warning: `笔记已移出，手动顺序未写入：${messageOf(error)}` };
+			}
+			return ok(leafId);
 		} catch (error) {
 			return fail("io-error", `解除配对失败：${messageOf(error)}`);
+		} finally {
+			this.changingPairs.delete(leafId);
 		}
-		try {
-			// 目录此时只剩空壳；留着它会立刻又变回一个空的分组目录。
-			await this.adapter.trash(node.folderPath);
-		} catch (error) {
-			return fail("io-error", `笔记已移出，但空目录没删掉：${messageOf(error)}`);
-		}
-		// 降级成叶子页面后，键从「名字」变回「名字.md」，同样原地保留位置。
-		await this.order.renameKey(
-			scopeOfNode(node),
-			basename(node.folderPath),
-			basename(joinPath(parentFolder, node.title + ".md")),
-		);
-		await this.order.removeScopeTree(node.id);
-		await this.deps.refresh();
-		return ok(this.relativeId(joinPath(parentFolder, node.title + ".md")) as PageId);
 	}
 
 	// ---------------------------------------------------------------- 排序

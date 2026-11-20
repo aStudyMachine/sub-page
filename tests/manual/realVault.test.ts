@@ -56,6 +56,14 @@ class ReadOnlyFsAdapter implements VaultAdapter {
 		}
 	}
 
+	async listFolderContents(): Promise<{ files: string[]; folders: string[] }> {
+		throw new Error("只读冒烟只使用扫描接口");
+	}
+
+	async trashEmptyFolder(): Promise<boolean> {
+		throw new Error("只读冒烟不许写库");
+	}
+
 	async readText(path: string): Promise<string | null> {
 		try {
 			return await readFile(this.absolute(path), "utf8");

@@ -41,6 +41,10 @@ export interface VaultEvent {
 export interface VaultAdapter {
 	/** 不存在或不是目录时返回 null，不抛异常。 */
 	listFolder(path: string): Promise<FolderListing | null>;
+	/** 磁盘上的直接内容，包含未进入宿主索引的文件。 */
+	listFolderContents(path: string): Promise<{ files: string[]; folders: string[] }>;
+	/** 重新核对目录为空，再移入库内回收站。 */
+	trashEmptyFolder(path: string): Promise<boolean>;
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string | null>;
 	writeText(path: string, content: string): Promise<void>;
