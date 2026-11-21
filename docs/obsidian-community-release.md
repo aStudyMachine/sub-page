@@ -16,7 +16,7 @@
 
 Release 必须单独提供 `main.js`、`manifest.json`、`styles.css`。每项是独立的证明对象。0.1.0 曾只证明 ZIP，门户因此提示独立资产缺证明。0.1.1 移除 ZIP 并给每项生成证明。
 
-`node scripts/release-checksums.mjs <目录>` 对文件的原始字节计算 SHA-256，再对固定顺序、固定 LF 的校验和清单计算 `checksums_digest`。目录参数只负责定位文件。复用 dry run 的校验和时，在命令最后加预期的 `checksums_digest`，不匹配则以失败退出。干净构建时使用与 CI 一致的 Node 22、锁文件和提交。构建会内嵌 Markdown，输入文件的换行变化也会影响产物。
+`node scripts/release-checksums.mjs <目录>` 对文件的原始字节计算 SHA-256，再对固定顺序、固定 LF 的校验和清单计算 `checksums_digest`。目录参数只负责定位文件。复用 dry run 的校验和时，在命令最后加预期的 `checksums_digest`，不匹配则以失败退出。干净构建时对齐源码 SHA、锁文件和内嵌 Markdown 的字节（`.gitattributes` 固定 LF）；三件套字节不随 Node 版本变化，本机没有 Node 22 时以 CI 的 `checksums_digest` 为准。构建会内嵌 Markdown，输入文件的换行变化也会影响产物。
 
 下载完 Release 后，分别对三个文件运行下面的命令。替换 `FILE` 和 `RELEASE_SHA` 为实际路径和标签解引用后的完整提交 SHA。
 

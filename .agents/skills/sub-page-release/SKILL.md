@@ -10,7 +10,7 @@ description: 准备或发布 Sub Page 的 GitHub Release，处理首次上架、
 ## 准备与预审
 
 1. 从同步后的 `dev` 准备候选。运行 `npm run bump -- <x.y.z>`，按 [Release 说明格式](../../../CONTRIBUTING.md#release-说明的统一格式) 更新变更记录和版本说明。核对 manifest、兼容表、package 和锁文件。
-2. 用 Node 22 运行 `npm ci`、`npm test`、`npm run build`。按 [手动验收清单](../../../CONTRIBUTING.md#手动验收清单) 在样例库验收变更涉及的场景，再按影响范围验证全新安装、上版升级、数据保留与独立窗口交互。部署步骤见 [部署 Skill](../sub-page-vault-deploy/SKILL.md)。
+2. 运行 `npm ci`、`npm test`、`npm run build`。校验和比对只需对齐源码 SHA、锁文件与内嵌文件行尾——Node 版本不参与产物生成；本机没有 Node 22 时，以 CI 的 `checksums_digest` 与下载资产字节为准。按 [手动验收清单](../../../CONTRIBUTING.md#手动验收清单) 在样例库验收变更涉及的场景，再按影响范围验证全新安装、上版升级、数据保留与独立窗口交互。部署步骤见 [部署 Skill](../sub-page-vault-deploy/SKILL.md)。
 3. 已有社区条目时，推送候选并用门户的 **Review branch** 预审该提交。核对报告中的 SHA、状态和 Error，记录保留 Warning 的业务理由。首发没有条目时，先完成 GitHub Release。入口与状态见 [社区发布手册](../../../docs/obsidian-community-release.md)。
 
 ## GitHub Release
