@@ -1,4 +1,4 @@
-import { App, TAbstractFile, TFile, TFolder, normalizePath as obsidianNormalize } from "obsidian";
+import { App, CapacitorAdapter, FileSystemAdapter, TAbstractFile, TFile, TFolder, normalizePath as obsidianNormalize } from "obsidian";
 import {
 	FileEntry,
 	FolderEntry,
@@ -16,6 +16,14 @@ import { dirname, normalizePath } from "../utils/pathUtils";
  */
 export class ObsidianVaultAdapter implements VaultAdapter {
 	constructor(private readonly app: App) {}
+
+	getAbsolutePath(path: string): string | null {
+		const adapter = this.app.vault.adapter;
+		if (adapter instanceof FileSystemAdapter || adapter instanceof CapacitorAdapter) {
+			return adapter.getFullPath(normalizePath(path));
+		}
+		return null;
+	}
 
 	async listFolder(path: string): Promise<FolderListing | null> {
 		const target = this.app.vault.getAbstractFileByPath(this.key(path));

@@ -19,6 +19,7 @@ const menu = vi.hoisted(() => ({
 
 vi.mock("obsidian", () => ({
 	Platform: { isDesktopApp: false },
+	Notice: class {},
 	ItemView: class {},
 	Modal: class {},
 	MarkdownRenderChild: class {},
@@ -154,6 +155,36 @@ describe("新建入口的目标位置", () => {
 	});
 });
 
+describe("侧栏菜单复制路径", () => {
+	it.each([
+		["笔记.md", "笔记.md"],
+		["父页面", "父页面/父页面.md"],
+		["分组", "分组"],
+	])("复制 %s 的笔记库相对路径和绝对路径", async (pageId, targetPath) => {
+		const h = await harness(new FakeVault({
+			"页面根/笔记.md": "",
+			"页面根/父页面/父页面.md": "",
+			"页面根/分组/子页.md": "",
+		}), "页面根");
+		const relativePath = `页面根/${targetPath}`;
+		const absolutePath = `C:\\笔记库\\${relativePath.replaceAll("/", "\\")}`;
+		const getAbsolutePath = vi.fn(() => absolutePath);
+		const writeText = vi.fn(async () => {});
+		const plugin = { t: (key: string) => key, service: { getAbsolutePath } } as unknown as SubPagePlugin;
+		vi.stubGlobal("navigator", { clipboard: { writeText } });
+		try {
+			menu.items.clear();
+			openPageMenuAt(plugin, { x: 0, y: 0 }, { node: h.index.getNode(id(pageId))! });
+			menu.items.get("menu.copyAbsolutePath")!();
+			menu.items.get("menu.copyRelativePath")!();
+			expect(getAbsolutePath).toHaveBeenCalledExactlyOnceWith(relativePath);
+			expect(writeText.mock.calls).toEqual([[absolutePath], [relativePath]]);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
 describe("新建页面", () => {
 	it("在根层建叶子页面，只产生一个 .md", async () => {
 		const h = await harness(new FakeVault());
@@ -191,11 +222,13 @@ describe("新建页面", () => {
 	it("在叶子页面下新建时配对原笔记，并保留其手动顺序", async () => {
 		const h = await harness(sampleVault());
 		await h.ops.reorderScope(null, ["笔记规范.md", "首页.md"]);
-		const plugin = { app: {}, t: (key: string) => key } as unknown as SubPagePlugin;
+		const plugin = { app: {}, t: (key: string) => key, service: { getAbsolutePath: () => null } } as unknown as SubPagePlugin;
 		const node = h.index.getNode(id("首页.md"))!;
 		menu.items.clear();
 		menu.openCreate.mockClear();
 		openPageMenuAt(plugin, { x: 0, y: 0 }, { node });
+		expect(menu.items.has("menu.copyAbsolutePath")).toBe(false);
+		expect(menu.items.has("menu.copyRelativePath")).toBe(true);
 		menu.items.get("menu.newSibling")!();
 		expect(menu.openCreate).toHaveBeenLastCalledWith(null, "modal.create.untitled");
 		menu.items.get("menu.newChild")!();

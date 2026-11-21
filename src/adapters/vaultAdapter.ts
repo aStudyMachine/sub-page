@@ -4,7 +4,7 @@ import { PageId } from "../models/pageId";
  * 适配层接口：全项目与宿主文件系统的唯一接触点，也是唯一的测试接缝。
  * 上层的扫描器、索引、顺序存储、操作服务只依赖这个接口。
  *
- * 所有路径都是相对 vault 根的 "/" 分隔路径。
+ * 路径参数都是相对 vault 根的 "/" 分隔路径。
  */
 
 export interface FolderEntry {
@@ -39,6 +39,8 @@ export interface VaultEvent {
 }
 
 export interface VaultAdapter {
+	/** 宿主可提供本机文件系统路径时返回绝对路径。 */
+	getAbsolutePath?(path: string): string | null;
 	/** 不存在或不是目录时返回 null，不抛异常。 */
 	listFolder(path: string): Promise<FolderListing | null>;
 	/** 磁盘上的直接内容，包含未进入宿主索引的文件。 */
