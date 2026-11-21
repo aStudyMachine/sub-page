@@ -43,7 +43,8 @@ export class PageTreeView extends ItemView {
 		private readonly plugin: SubPagePlugin,
 	) {
 		super(leaf);
-		this.expanded = plugin.expandedIds;
+		// 展开态不在这里从 plugin 拷贝：视图可能早于 loadSettings 构造，
+		// 那一刻的 settings 是默认空值。render() 每帧重读才是唯一入口。
 	}
 
 	private get service() {
@@ -140,9 +141,13 @@ export class PageTreeView extends ItemView {
 
 	render(): void {
 		if (!this.listEl) return;
+		// 展开态以设置为唯一真相，每帧重读。视图可能早于 loadSettings 构造，
+		// 构造时拿到的是默认空值；若在首帧把空集写回设置，就会把持久化的展开态洗掉。
+		// 因此 render 只读不写，变更一律由交互方法显式 setExpandedIds 落盘。
+		this.expanded = new Set(this.plugin.expandedIds);
 		const snapshotIds = new Set(Array.from(this.service.index.current.nodes.keys()) as string[]);
+		// 失效 ID 只在显示层裁掉，不回写设置——回写只能由交互方法做。
 		this.expanded = pruneExpanded(this.expanded, snapshotIds);
-		void this.plugin.setExpandedIds(this.expanded);
 
 		if (this.searchTerm.trim() !== "") {
 			this.renderSearch();
@@ -387,6 +392,7 @@ export class PageTreeView extends ItemView {
 		const expanded = expandAncestors(this.expanded, ancestors);
 		if (expanded.size === this.expanded.size) return false;
 		this.expanded = expanded;
+		void this.plugin.setExpandedIds(this.expanded);
 		return true;
 	}
 
@@ -425,8 +431,8 @@ export class PageTreeView extends ItemView {
 		if (!id) return;
 		this.searchTerm = "";
 		if (this.searchEl) this.searchEl.value = "";
+		// expandPageAncestors 变化时已落盘；没变化则无需写。
 		this.expandPageAncestors(id);
-		void this.plugin.setExpandedIds(this.expanded);
 		this.render();
 		this.setFocusRing(id);
 		this.listEl?.querySelector<HTMLElement>(`.sp-row[data-id="${cssEscape(id)}"]`)?.scrollIntoView({ block: "nearest" });

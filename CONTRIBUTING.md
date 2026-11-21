@@ -44,6 +44,8 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 
 `FakeVault` 用来测试扫描、文件操作、排序和事件合并。侧栏和正文入口的测试使用 Obsidian API 模拟，覆盖目标页面、可见行和快捷键接线。宿主界面的样式、布局和真实拖放用下面的样例库验收。
 
+**模拟的边界**：mock 测不到插件初始化/workspace 恢复这类生命周期时序。凡改动涉及启动顺序、设置加载、持久化恢复，mock 不得以「已加载」的终态充当初态，必须能反转初始状态并断言状态迁移；并且必须按下面的清单实机关闭-重开一次，核对 `data.json` 的 `expandedIds` 等落盘字段，单测通过不等于实机通过（踩过的坑见 [§2.23](docs/agent-lessons.md#223-重开知识库后展开态全折叠首帧-render-把空集写回设置)）。架构上另有一条不变量：渲染路径（render/纯函数）不得写持久化状态，变更只能由交互方法落盘。
+
 [Studio Atlas 验收矩阵](docs/demo-vault.md) 使用 Git 管理的展示库，覆盖截图、写操作、设置、诊断和兼容性场景。
 
 ## 手动验收清单
@@ -133,7 +135,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 
 25. [ ] Obsidian 外用资源管理器在 sandbox 里新建 `外部.md` → 1 秒内出现在树里
 26. [ ] 外部把 `外部.md` 改名 → 树里跟着改名
-27. [ ] 重启 Obsidian → 展开状态与手动排序都保持；`order.json` 里没有指向已删页面的残留条目
+27. [ ] 先在侧栏展开几层，记下 `.obsidian/plugins/sub-page/data.json` 的 `expandedIds` 内容 → 关闭并重新打开 Obsidian → 树里同样层级的节点仍展开，且重启后 `data.json` 的 `expandedIds` 与关闭前一致（不是只看视觉）；手动排序也保持；`order.json` 里没有指向已删页面的残留条目
 
 ### 按需配对与自动还原
 
@@ -149,6 +151,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 ### 怎么算通过
 
 - **全过**：可以发版。发之前再跑一次 `npm test && npm run build`，确认产物与刚才验收的是同一份。
+- **涉及生命周期/持久化时序的修复**：除单测外，必须实机关闭-重开并过第 27 条（对比重启前后 `data.json` 的 `expandedIds`）才算通过——这类 bug 单测和静态评审都可能放过。
 - **某条不过**：记下编号 + 期望值 + 实际值；有报错就一起带走（开发者控制台 `Ctrl+Shift+I`，插件日志都带 `[sub-page]` 前缀）。
   结构类问题记录相关磁盘路径和 `test-vault/sandbox/.obsidian/plugins/sub-page/order.json` 中对应的作用域。
 - 验收跑完不要提交 sandbox 里的任何改动 —— 它在 `.gitignore` 里，属于本地样板。

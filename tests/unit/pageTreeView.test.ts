@@ -23,7 +23,10 @@ const note = { id: "jvm/gc" as PageId, childIds: [], filePath: "jvm/gc.md" };
 const other = { id: "home" as PageId, childIds: [], filePath: "home.md" };
 const parent = { ...folder, kind: "parent", filePath: "jvm/jvm.md" } satisfies Partial<PageNode>;
 
-async function openTree(initiallyExpanded: string[] = [folder.id], branch: Partial<PageNode> = folder) {
+async function openTree(
+	initiallyExpanded: string[] = [folder.id],
+	branch: Partial<PageNode> = folder,
+) {
 	let activeFile = Object.assign(new TFile(), { path: note.filePath });
 	let onFileOpen: (file: TFile | null) => void = () => {};
 	const workspace = {
@@ -34,14 +37,16 @@ async function openTree(initiallyExpanded: string[] = [folder.id], branch: Parti
 	const file = Object.assign(new TFile(), { path: branch.filePath });
 	const openFile = vi.fn(async (_file: TFile) => {});
 	let saved = new Set(initiallyExpanded);
+	let setCalls = 0;
 	const movePage = vi.fn(async (_source: PageId, _target: PageId) => ({ ok: true, value: note.id }));
+	const index = { current: { nodes: new Map([branch, note, other].map((node) => [node.id, node])) } };
 	const plugin = {
 		app: { workspace, vault: { getAbstractFileByPath: () => file } },
-		expandedIds: saved,
-		setExpandedIds: (ids: Set<string>) => { saved = new Set(ids); },
+		get expandedIds() { return new Set(saved); },
+		setExpandedIds: (ids: Set<string>) => { saved = new Set(ids); setCalls += 1; },
 		service: {
 			operations: { movePage },
-			index: { current: { nodes: new Map([branch, note, other].map((node) => [node.id, node])) } },
+			index,
 			getRoots: () => [branch, other],
 			getChildren: () => [note],
 			getAncestors: (id: PageId) => id === note.id ? [folder] : [],
@@ -72,6 +77,8 @@ async function openTree(initiallyExpanded: string[] = [folder.id], branch: Parti
 		view,
 		rows,
 		saved: () => [...saved],
+		setCalls: () => setCalls,
+		setSaved: (ids: string[]) => { saved = new Set(ids); },
 		movePage,
 		openFile,
 		clickFolder: (icon = false) => view["onRowClick"](
@@ -147,4 +154,31 @@ it("首次重绘保留折叠状态，切换笔记和主动定位仍会展开祖�
 	expect(tree.saved()).toEqual([]);
 	tree.view.revealCurrent();
 	expect(tree.rows).toContainEqual({ id: note.id, current: true });
+});
+
+it("重绘只读设置不回写：构造时设置为空也不会把空展开态洗掉", async () => {
+	// 真实根因：视图构造早于 loadSettings，首帧 render 曾把空集写回设置，
+	// 覆盖掉已持久化的展开态。现在 render 一律不写，改动只由交互落盘。
+	const tree = await openTree([], folder);
+	expect(tree.setCalls()).toBe(0);
+	// 设置加载完成后重绘，从设置重新读取展开态。
+	tree.setSaved([folder.id]);
+	tree.view.render();
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	// 重绘仍然不写盘。
+	expect(tree.setCalls()).toBe(0);
+	expect(tree.saved()).toEqual([folder.id]);
+});
+
+it("重绘每次都重读设置，折叠态在连续重绘间保持稳定", async () => {
+	const tree = await openTree([folder.id], folder);
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	// 外部（loadSettings/remap）更新了设置，下一次重绘要跟上。
+	tree.setSaved([]);
+	tree.view.render();
+	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
+	tree.setSaved([folder.id]);
+	tree.view.render();
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	expect(tree.setCalls()).toBe(0);
 });
