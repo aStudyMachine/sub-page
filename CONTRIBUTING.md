@@ -59,6 +59,8 @@ npm run sandbox:reset                 # 把样例笔记恢复原状（跑过一�
 npm run deploy -- test-vault/sandbox   # 测试、构建并部署本次改动
 ```
 
+第一次打开样例库时确认两项设置：关闭「无子页面则删除文件夹，还原原本的页面」，否则 `sandbox:reset` 之后插件会把 `项目A/设计/设计.md` 还原成叶子页面；并保证 `.obsidian/app.json` 的 `alwaysUpdateLinks` 为 `true`，否则改名时宿主会弹「更新链接」询问，反链看起来像没更新。
+
 在 Obsidian 里 `打开文件夹作为库` 选择 `test-vault/sandbox`。若弹出「是否信任作者并启用插件」，选信任。
 页面根留空（整个库）。
 

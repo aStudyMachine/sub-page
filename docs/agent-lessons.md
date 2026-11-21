@@ -147,3 +147,19 @@ Obsidian 1.15.1 的 FileManager.trashFile() 在系统回收失败时返回 false
 4. 定位手法：状态尚未就绪的时序 bug 靠静态推理反复猜很慢；临时把调用栈 + 关键状态写进 data.json 再读回，一次重启就能锁定调用链（用完即移除）。
 
 spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在，但与本 bug 无关。
+
+### 2.24 门户「检查新版本」的结果不在回执页
+
+**现象**：点 **Check for new releases** 后页面一直显示「A scan has been queued.」，反复刷新或再点按钮都不出结果，看起来像卡住。
+
+**根因**：那一页只是排队回执，评审在服务端异步执行；回执页不会随扫描进度更新，结果写在 dashboard 的 **Reviews** 列表里。
+
+**对策**：按钮点一次就够，之后回 dashboard 看 Reviews 列表，出现目标版本行且状态为 `Completed` 再读报告。重复点不会加速，还可能重复入队。0.1.2 的扫描在排队后约十分钟完成，期间刷新回执页没有任何信息量。
+
+### 2.25 bsk 守护进程的端口可能落在 Windows 保留区间
+
+**现象**：`bsk daemon start` 报 `bind WS server on 127.0.0.1:52800 ... os error 10013`；扩展弹窗显示「已连接」，但 `bsk browsers` 为空。
+
+**根因**：Windows 动态保留区间覆盖了 52800（`netsh int ipv4 show excludedportrange protocol=tcp` 能看到），不是端口被进程占用，`netstat` 里没有监听者。这天上午守护进程还能正常绑定，说明保留区间会随系统服务启停漂移。
+
+**对策**：管理员执行 `net stop winnat` 释放区间，再启动守护进程；收工后 `net start winnat`。已建立的监听不受恢复影响。不要改用 `--port`：扩展固定在 52800，换端口后守护进程能起但扩展连不上。

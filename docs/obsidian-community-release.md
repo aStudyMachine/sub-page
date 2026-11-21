@@ -40,3 +40,4 @@ gh attestation verify "FILE" --repo aStudyMachine/sub-page \
 | --- | --- |
 | 0.1.0 | 首次上架，正式评审零 Error，13 Warning、4 Recommendation，Build verification Pass。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.0) |
 | 0.1.1 | 预审及正式评审零 Error，正式评审保留 2 Warning、1 Recommendation，Build verification Pass。验证三个独立资产及构建证明。镜像待同步时完成宿主直接安装和 0.1.0 升级。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.1) |
+| 0.1.2 | 正式评审零 Error，保留 2 Warning、1 Recommendation（剪贴板访问），Build verification Pass（main.js 字节级复现）。验证三个独立资产及构建证明。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.2) |
