@@ -1,6 +1,6 @@
 ---
 name: sub-page-vault-deploy
-description: 将当前 Sub Page Obsidian 插件部署到指定本地笔记库，核对产物、重载和实际交互。用户要求部署到 Knowledge、更新样例库，或反馈部署后仍看到旧行为时使用。
+description: 将当前 Sub Page Obsidian 插件部署到指定本地笔记库，核对产物，并按请求重载和验收。用于部署到本地笔记库、更新样例库或排查部署后仍出现的旧行为。
 ---
 
 # 部署 Sub Page 到本地笔记库

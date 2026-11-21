@@ -10,8 +10,7 @@ export interface MenuTarget {
 }
 
 /**
- * 右键菜单。桌面与移动端共用同一套条目 —— 移动端靠长按呼出，
- * 不另做一套界面（条目少于 8 项，菜单本来就读得下）。
+ * 右键菜单。桌面与移动端共用菜单实现，移动端靠长按呼出。
  */
 export function openPageMenu(plugin: SubPagePlugin, event: MouseEvent, target: MenuTarget): void {
 	openPageMenuAt(plugin, { x: event.clientX, y: event.clientY }, target);
@@ -70,6 +69,22 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 					.onClick(() => void copyLink(plugin, node)),
 			);
 		}
+		const relativePath = node.filePath ?? node.folderPath;
+		const absolutePath = plugin.service.getAbsolutePath(relativePath);
+		if (absolutePath !== null) {
+			menu.addItem((item) =>
+				item
+					.setTitle(t("menu.copyAbsolutePath"))
+					.setIcon("copy")
+					.onClick(() => void copyText(plugin, absolutePath, "notice.pathCopied")),
+			);
+		}
+		menu.addItem((item) =>
+			item
+				.setTitle(t("menu.copyRelativePath"))
+				.setIcon("copy")
+				.onClick(() => void copyText(plugin, relativePath, "notice.pathCopied")),
+		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.openInNewTab"))
@@ -161,11 +176,15 @@ async function copyLink(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 		return;
 	}
 	const target = plugin.app.metadataCache.fileToLinktext(file, "", true);
+	await copyText(plugin, `[[${target}]]`, "notice.linkCopied");
+}
+
+async function copyText(plugin: SubPagePlugin, text: string, successKey: "notice.linkCopied" | "notice.pathCopied"): Promise<void> {
 	try {
-		await navigator.clipboard.writeText(`[[${target}]]`);
-		new Notice(plugin.t("notice.linkCopied"));
+		await navigator.clipboard.writeText(text);
+		new Notice(plugin.t(successKey));
 	} catch {
-		new Notice(plugin.t("notice.linkCopyFailed"));
+		new Notice(plugin.t("notice.clipboardWriteFailed"));
 	}
 }
 

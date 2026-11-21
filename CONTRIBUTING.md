@@ -44,6 +44,8 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 
 `FakeVault` 用来测试扫描、文件操作、排序和事件合并。侧栏和正文入口的测试使用 Obsidian API 模拟，覆盖目标页面、可见行和快捷键接线。宿主界面的样式、布局和真实拖放用下面的样例库验收。
 
+**模拟的边界**：mock 测不到插件初始化/workspace 恢复这类生命周期时序。凡改动涉及启动顺序、设置加载、持久化恢复，mock 不得以「已加载」的终态充当初态，必须能反转初始状态并断言状态迁移；并且必须按下面的清单实机关闭-重开一次，核对 `data.json` 的 `expandedIds` 等落盘字段，单测通过不等于实机通过（踩过的坑见 [§2.23](docs/agent-lessons.md#223-重开知识库后展开态全折叠首帧-render-把空集写回设置)）。架构上另有一条不变量：渲染路径（render/纯函数）不得写持久化状态，变更只能由交互方法落盘。
+
 [Studio Atlas 验收矩阵](docs/demo-vault.md) 使用 Git 管理的展示库，覆盖截图、写操作、设置、诊断和兼容性场景。
 
 ## 手动验收清单
@@ -133,7 +135,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 
 25. [ ] Obsidian 外用资源管理器在 sandbox 里新建 `外部.md` → 1 秒内出现在树里
 26. [ ] 外部把 `外部.md` 改名 → 树里跟着改名
-27. [ ] 重启 Obsidian → 展开状态与手动排序都保持；`order.json` 里没有指向已删页面的残留条目
+27. [ ] 先在侧栏展开几层，记下 `.obsidian/plugins/sub-page/data.json` 的 `expandedIds` 内容 → 关闭并重新打开 Obsidian → 树里同样层级的节点仍展开，且重启后 `data.json` 的 `expandedIds` 与关闭前一致（不是只看视觉）；手动排序也保持；`order.json` 里没有指向已删页面的残留条目
 
 ### 按需配对与自动还原
 
@@ -149,21 +151,67 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 ### 怎么算通过
 
 - **全过**：可以发版。发之前再跑一次 `npm test && npm run build`，确认产物与刚才验收的是同一份。
+- **涉及生命周期/持久化时序的修复**：除单测外，必须实机关闭-重开并过第 27 条（对比重启前后 `data.json` 的 `expandedIds`）才算通过——这类 bug 单测和静态评审都可能放过。
 - **某条不过**：记下编号 + 期望值 + 实际值；有报错就一起带走（开发者控制台 `Ctrl+Shift+I`，插件日志都带 `[sub-page]` 前缀）。
   结构类问题记录相关磁盘路径和 `test-vault/sandbox/.obsidian/plugins/sub-page/order.json` 中对应的作用域。
 - 验收跑完不要提交 sandbox 里的任何改动 —— 它在 `.gitignore` 里，属于本地样板。
 
 ## 发布
 
-`.github/workflows/release.yml` 只能从 `main` 手动触发，默认 `dry_run`。
+按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
 
-顺序（不要跳）：
+### Release 说明的统一格式
 
-1. 运行 `npm run bump -- <x.y.z>`，添加 `docs/release-notes/<x.y.z>.md`，更新变更记录，在样例库验收后提交并推送 `dev`。
-2. 合并并推送 `main`，在该分支运行 `dry_run`，记录提交 SHA、三个产物的 SHA-256 和 `checksums_digest`。
-3. 为该提交创建并推送标签 `<x.y.z>`。从同一提交关闭 `dry_run` 触发发布，填入上一步的 `checksums_digest`。工作流会核对标签目标和产物校验和。
-4. 下载 Release 的三个独立文件，核对各文件的 SHA-256，再用 `gh attestation verify <文件> --repo aStudyMachine/sub-page --source-digest <提交SHA> --signer-workflow aStudyMachine/sub-page/.github/workflows/release.yml` 逐个验证构建来源。
-5. 首次上架时，用 Obsidian 社区开发者门户关联 GitHub 并提交公开仓库。等初审通过后，在门户中发布条目，再从 Obsidian 客户端检索与安装。已有条目可先用门户的分支预览。**版本触发 Error 级问题时，修复后升版发新 Release**。 [Obsidian 插件提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
+- `CHANGELOG.md` 与 GitHub Release 说明**只写变更内容**（新增 / 修复 / 变更 / 兼容性）。「本轮不修的项及其理由」「跑过的验证过程」留在仓库待办，不要塞进发布物：在一个没有用户可见变化的补丁版发布说明里放三十行内部申辩，读者只会困惑。
+
+GitHub Release 说明固定**英文在前、中文在后**，各用 H2，中间空一行：
+
+```markdown
+## English
+
+### New
+
+- ...
+
+### Changed
+
+- ...
+
+### Fixed
+
+- ...
+
+### Compatibility
+
+- ...
+
+## 简体中文
+
+### 新增
+
+- ...
+
+### 变更
+
+- ...
+
+### 修复
+
+- ...
+
+### 兼容性
+
+- ...
+```
+
+- 章节按需出现，顺序固定为 New → Changed → Fixed → Compatibility（中文对应新增 → 变更 →
+  修复 → 兼容性），空章节省略；兼容性写**该版本发布当时**的真实最低版本与平台，不用当前
+  状态改写历史。
+- 只写普通用户能直接感知的功能、行为变化与兼容性。安全修复可以保留一条简短的
+  `Fixed` / `修复`（0.1.5 的 KaTeX 公告即此）；内部维护、构建证明、安装步骤、README
+  链接、体积说明不写进 Release 说明。
+- 没有用户可见变化的版本（如 0.1.3 / 0.1.6）写一句双语「仅内部维护，无用户可见变化」加
+  兼容性，不硬凑 New / Changed 条目。
 
 ## 代码风格
 

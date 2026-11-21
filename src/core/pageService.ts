@@ -221,6 +221,10 @@ export class PageService {
 		return this.index.getNode(id);
 	}
 
+	getAbsolutePath(path: string): string | null {
+		return this.deps.adapter.getAbsolutePath?.(path) ?? null;
+	}
+
 	getChildren(id: PageId | null): PageNode[] {
 		return this.index.getChildren(id);
 	}

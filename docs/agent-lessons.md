@@ -113,3 +113,37 @@ Obsidian 1.15.1 正在更新链接时，`fileManager.renameFile` 可能先返回
 ### 2.18 系统回收失败可能正常返回
 
 Obsidian 1.15.1 的 FileManager.trashFile() 在系统回收失败时返回 false，已安装的 API 类型仍声明 Promise<void>。把宿主结果作为 unknown 检查，遇到 false 先返回删除失败，保留页面和手动顺序。见 [宿主变更记录](https://obsidian.md/changelog/2026-11-12-desktop-v1.15.1/) 和 [适配层回归测试](../tests/unit/obsidianVaultAdapter.test.ts)。
+
+### 2.19 目录改名也要验证笔记链接
+
+发布验收发现目录改名和跨作用域移动后，子笔记的链接仍指向旧路径。直接调用 `vault.rename` 绕开了宿主的链接维护。目录和笔记统一通过 `fileManager.renameFile`，并在样例库从链接来源打开目标笔记验证。配对目录清理的时序见 §2.16。见 [宿主 API 决策](adr/0005-host-api-only.md) 和 [适配层测试](../tests/unit/obsidianVaultAdapter.test.ts)。
+
+### 2.20 文件移动成功后仍可能保存顺序失败
+
+损坏或不可写的 `order.json` 会使顺序保存抛错，此时物理移动可能已经提交。若调用方只能看到拒绝的 Promise，树也可能没有刷新。移动完成后即刷新索引，保留实际结果并返回持久化警告。核对新路径、原顺序文件以及 UI 提示。见 [页面操作测试](../tests/unit/pageOperationService.test.ts)。
+
+### 2.21 门户自动化先确认浏览器登录态
+
+首发时 Orca 内置浏览器使用独立配置，打开了未登录页。浏览器扩展的本地监听又遇到 Windows `os error 10013`。切换到已有登录态的原生 Chrome 后可继续，独立窗口可避免打断用户当前标签页。在本次会话里，通过可访问的重载按钮刷新成功。门户显示已排队后继续按版本查看正式报告。见 [社区发布手册](obsidian-community-release.md#门户评审)。
+
+### 2.22 正式构建要在公开发布前核对 dry run
+
+原流程打印校验和后直接创建 Release，默认分支推进或重新构建变化都可能使实际资产偏离验收结果。工作流在公开前校验标签指向本次 SHA，并将三个文件的校验和清单与 dry run 比对。下载后逐项核验字节与构建证明。见 [发布工作流](../.github/workflows/release.yml) 和 [校验脚本](../scripts/release-checksums.mjs)。
+
+### 2.23 重开知识库后展开态全折叠：首帧 render 把空集写回设置
+
+**现象**：data.json 里 `expandedIds` 明明有值，关闭知识库再打开后侧栏树全部折叠，且 data.json 被写成 `expandedIds: []`。
+
+**根因（以下描述修复前的实现；构造拷贝与 render 回写现已删除）**：Obsidian 恢复 workspace 时（栈：`setViewState → open → onOpen → render`），视图可能早于插件 `loadSettings()` 完成而构造。构造函数把 `plugin.expandedIds`（此时还是默认空值）拷进 `this.expanded`，首帧 `render()` 无条件 `void setExpandedIds(this.expanded)` 把空集写回 settings——覆盖掉磁盘上已持久化的展开态。事后 `loadSettings()` 再读 data.json，读到的已是空。第一次修复试图用 `PageIndex.isReady` 门槛 + 首帧注水解决，单测全绿但实机仍复现：因为 view 首帧的 `isReady` 已为真，门槛根本没拦住，真正的写盘在 render 里。
+
+**定位手法**：静态推理和 mock 测试都找不到（mock 直接把 expandedIds 注入 plugin，从不走「构造时空设置 → 首帧写回」链路）。在 `saveSettings`/`setExpandedIds` 里临时把调用栈 + 当时的 expandedIds 写进 data.json 的 `_diag` 字段，部署后重启一次读日志，直接看到 `onOpen → render → setExpandedIds([])` 这条链。诊断完即移除 `_diag`。
+
+**对策**：展开态以设置为唯一真相。`render()` 每帧 `this.expanded = new Set(this.plugin.expandedIds)` 重读，prune 仅用于显示（失效 ID 不显示，但**不从设置清除**——清除必须放在非渲染路径，否则又回到渲染期回写），**render 对展开态一律不写盘**；所有变更由交互方法（toggle/键盘/expandAll/collapseAll/revealCurrent/expandPageAncestors）显式 `setExpandedIds` 落盘。这样首帧读到空设置也不会污染磁盘，设置加载完成后下一帧自然重读回来。回归用例见 [侧栏视图测试](../tests/unit/pageTreeView.test.ts)（「重绘只读设置不回写」「重绘每次都重读设置」两条）。
+
+**可复用规则**（遇到同类生命周期/时序 bug 时照做）：
+1. **mock 必须建模状态转换，不得以终态充当初态**：本次 mock 把已加载的 expandedIds 直接注入 plugin，saved 永远是「已加载」态，无从表达「构造时设置为空、磁盘有值、随后 loadSettings 才读回」，所以 253 项全绿仍漏 bug。凡涉及「初始化/恢复/生命周期」的改动，mock 要能反转初始状态并断言状态迁移。
+2. **验收走原始复现路径**：生命周期/持久化修复不能只凭单测 + 静态评审，必须实机关闭-重开并核对落盘文件（data.json 的 expandedIds），而不是只看界面视觉。
+3. **渲染/纯函数不得写持久化状态**：这是一条架构不变量，评审时对 render/纯函数里的写盘调用要直接判为可疑。
+4. 定位手法：状态尚未就绪的时序 bug 靠静态推理反复猜很慢；临时把调用栈 + 关键状态写进 data.json 再读回，一次重启就能锁定调用链（用完即移除）。
+
+spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在，但与本 bug 无关。
