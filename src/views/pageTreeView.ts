@@ -249,7 +249,9 @@ export class PageTreeView extends ItemView {
 		const target = event.target as HTMLElement;
 		const canToggle = node.childIds.length > 0 && !this.searchTerm.trim();
 		const opensNote = node.kind !== "group" && !(canToggle && target.closest(".sp-icon"));
-		if (node.kind === "group" || (node.kind === "parent" && canToggle)) this.toggle(node);
+		const shouldToggleParent = node.kind === "parent" && canToggle &&
+			(!opensNote || !this.expanded.has(node.id) || this.currentPageId() === node.id);
+		if (node.kind === "group" || shouldToggleParent) this.toggle(node);
 		this.setFocusRing(node.id);
 		if (opensNote) void openPage(this.plugin, node);
 	}

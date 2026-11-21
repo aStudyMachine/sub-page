@@ -10,7 +10,7 @@ Try it with the [Studio Atlas example vault](demo-vault/).
 
 ## What you can do
 
-- **Browse and search your page tree** alongside Obsidian’s file explorer. Click a parent page’s title to open the note and expand or collapse its children. Click its icon to toggle the list on its own.
+- **Browse and search your page tree** alongside Obsidian’s file explorer. Click a parent page’s title to open the note and show its children. Click the title again to collapse them. The icon toggles the list on its own.
 - **Create and organize pages** from the sidebar. Use **+** to create a page, or right-click a page and choose **New sub page**. On desktop, drag to the center of a row to make a page its child, or to the top or bottom edge to reorder it. On mobile, long-press a page to open its menu and use **Move up** or **Move down**.
 - **Show child pages inside a note** as a list or card grid, with optional icons and descriptions.
 

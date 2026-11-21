@@ -21,6 +21,7 @@ const folder = {
 } satisfies Partial<PageNode>;
 const note = { id: "jvm/gc" as PageId, childIds: [], filePath: "jvm/gc.md" };
 const other = { id: "home" as PageId, childIds: [], filePath: "home.md" };
+const parent = { ...folder, kind: "parent", filePath: "jvm/jvm.md" } satisfies Partial<PageNode>;
 
 async function openTree(initiallyExpanded: string[] = [folder.id], branch: Partial<PageNode> = folder) {
 	let activeFile = Object.assign(new TFile(), { path: note.filePath });
@@ -44,7 +45,7 @@ async function openTree(initiallyExpanded: string[] = [folder.id], branch: Parti
 			getRoots: () => [branch, other],
 			getChildren: () => [note],
 			getAncestors: (id: PageId) => id === note.id ? [folder] : [],
-			nodeForFilePath: (path: string) => [note, other].find((node) => node.filePath === path),
+			nodeForFilePath: (path: string) => [branch, note, other].find((node) => node.filePath === path),
 		},
 	} as unknown as SubPagePlugin;
 	const leaf = { app: { workspace, loadLocalStorage: () => true } } as unknown as WorkspaceLeaf;
@@ -84,18 +85,30 @@ async function openTree(initiallyExpanded: string[] = [folder.id], branch: Parti
 	};
 }
 
-it("父页面标题单击后立即切换子页面并打开笔记，图标只切换", async () => {
-	const tree = await openTree([], { ...folder, kind: "parent", filePath: "jvm/jvm.md" });
+it("点击折叠的父页面标题立即展开并打开笔记，图标只切换展开状态", async () => {
+	const tree = await openTree([], parent);
 	tree.clickFolder();
-	expect(tree.openFile).toHaveBeenCalledWith(expect.objectContaining({ path: "jvm/jvm.md" }));
-	expect(tree.rows.map((row) => row.id)).toContain(note.id);
-	tree.clickFolder();
-	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
-	tree.clickFolder(true);
+	expect(tree.openFile).toHaveBeenCalledWith(expect.objectContaining({ path: parent.filePath }));
 	expect(tree.rows.map((row) => row.id)).toContain(note.id);
 	tree.clickFolder(true);
 	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
-	expect(tree.openFile).toHaveBeenCalledTimes(2);
+	tree.clickFolder(true);
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	expect(tree.openFile).toHaveBeenCalledTimes(1);
+});
+
+it.each([note.filePath, other.filePath])("从 %s 打开已展开的父页面时保留子页面，再点才折叠", async (path) => {
+	const tree = await openTree([parent.id], parent);
+	tree.open(path);
+	tree.clickFolder();
+	expect(tree.openFile).toHaveBeenCalledWith(expect.objectContaining({ path: parent.filePath }));
+	expect(tree.rows.map((row) => row.id)).toContain(note.id);
+	expect(tree.saved()).toEqual([parent.id]);
+	tree.open(parent.filePath);
+	expect(tree.rows).toContainEqual({ id: parent.id, current: true });
+	tree.clickFolder();
+	expect(tree.rows.map((row) => row.id)).not.toContain(note.id);
+	expect(tree.saved()).toEqual([]);
 });
 
 it("当前笔记位于分组内时，点击和键盘仍可折叠或展开分组", async () => {
