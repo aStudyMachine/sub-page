@@ -11,6 +11,10 @@ description: Organize notes in an Obsidian vault that uses Sub Page. Use when cr
 4. Add a `subpages` code block when a parent note should display its children in the body. The file layout determines the hierarchy. Use the sidebar for manual ordering when requested.
 5. Verify the resulting paths, the parent note and its immediate children, and any links affected by the move. If the Obsidian workspace is available, check that the tree reflects the new hierarchy.
 
-If **Restore pages that have no children** is enabled, Sub Page can move the parent note up one level when it is the only remaining item in its folder. Check this setting before relying on an empty parent folder.
+If **Restore pages that have no children** is enabled (the default), Sub Page moves a parent note up one level on every index refresh when it is the only item left in its folder, then trashes the empty folder. Write child notes first, and the same-named note last, or write the whole set in one batch before Obsidian refreshes. Otherwise `Topic/Topic.md` becomes `Topic.md` beside a later recreated `Topic/`: two separate nodes, not a parent page. Only a note inside the folder is paired, so placing `Topic.md` next to `Topic/` never yields a parent page.
+
+## Ownership
+
+This skill is maintained by the Sub Page plugin author. Do not edit, rename, move, or delete it: the plugin rewrites this file when the skill is installed, so local changes are lost. Report problems against the plugin instead of patching this file.
 
 <!-- managed-by: sub-page-organize -->
