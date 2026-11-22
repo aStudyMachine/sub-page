@@ -11,11 +11,11 @@ description: 准备或发布 Sub Page 的 GitHub Release，处理首次上架、
 
 1. 从同步后的 `dev` 准备候选。运行 `npm run bump -- <x.y.z>`，按 [Release 说明格式](../../../CONTRIBUTING.md#release-说明的统一格式) 更新变更记录和版本说明。核对 manifest、兼容表、package 和锁文件。
 2. 运行 `npm ci`、`npm test`、`npm run build`。校验和比对只需对齐源码 SHA、锁文件与内嵌文件行尾——Node 版本不参与产物生成；本机没有 Node 22 时，以 CI 的 `checksums_digest` 与下载资产字节为准。按 [手动验收清单](../../../CONTRIBUTING.md#手动验收清单) 在样例库验收变更涉及的场景，再按影响范围验证全新安装、上版升级、数据保留与独立窗口交互。部署步骤见 [部署 Skill](../sub-page-vault-deploy/SKILL.md)。
-3. 已有社区条目时，推送候选并用门户的 **Review branch** 预审该提交。核对报告中的 SHA、状态和 Error，记录保留 Warning 的业务理由。首发没有条目时，先完成 GitHub Release。入口与状态见 [社区发布手册](../../../docs/obsidian-community-release.md)。
+3. **预审门禁（硬规范，不可跳过）**：已有社区条目时，先把候选推到独立分支，用门户的 **Review branch** 指向该分支最新 SHA，等报告 `Completed`、零 Error、Build verification 通过，记录报告 SHA 与保留 Warning 的业务理由。没有这份报告，不得把候选合入 `main`、不得打 tag、不得发 Release；有 Error 就修完重新预审，不能带 Error 进入正式评审。门户或评审不可用时停下来问用户，不静默跳过。首发没有条目时没有预审入口，按首次上架流程先完成 GitHub Release。入口与状态见 [社区发布手册](../../../docs/obsidian-community-release.md)。
 
 ## GitHub Release
 
-1. 将候选合入 `dev`，然后合入并推送 `main`。核对 `main` 中的树与验收候选相同，在 `main` 手动运行 Release 工作流的 `dry_run=true`。记录运行链接、提交 SHA、各资产校验和与 `checksums_digest`。用同一 SHA 的干净源码构建并运行 `node scripts/release-checksums.mjs` 比对。
+1. 合入 `main` 前先确认预审门禁已通过（首发为首次上架流程已完成）。将候选合入 `dev`，然后合入并推送 `main`。核对 `main` 中的树与验收候选相同，在 `main` 手动运行 Release 工作流的 `dry_run=true`。记录运行链接、提交 SHA、各资产校验和与 `checksums_digest`。用同一 SHA 的干净源码构建并运行 `node scripts/release-checksums.mjs` 比对。
 2. 给该 SHA 创建并推送精确的 `x.y.z` 标签。从同一 SHA 运行 `dry_run=false`，传入上一步的 `expected_checksums_digest`。工作流会核对 tag 指向和资产校验和。若 `main` 或候选已变化，重新核对差异并跑 dry run。
 3. 下载三项独立资产，运行 `node scripts/release-checksums.mjs <下载目录> <checksums_digest>`。逐个核验构建证明，命令见 [构建证明](../../../docs/obsidian-community-release.md#构建证明)。
 

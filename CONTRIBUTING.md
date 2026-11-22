@@ -160,7 +160,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 
 ## 发布
 
-按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
+按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。已有社区条目时，先推候选分支并用门户 **Review branch** 预审，报告零 Error 才合 `main`——这一步是硬门禁，不因改动小或时间紧跳过。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
 
 ### Release 说明的统一格式
 

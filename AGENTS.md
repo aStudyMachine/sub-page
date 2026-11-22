@@ -17,10 +17,11 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 | `docs/obsidian-community-release.md` | 社区门户状态、构建证明和客户端目录 | 遇到审查、产物或上架状态不一致时 |
 | `docs/perf-baseline.md` | 扫描耗时实测 | 讨论性能优化之前 |
 
-## 两条硬约束
+## 三条硬约束
 
 1. **`release.yml` 用 `workflow_dispatch` 触发，而 `workflow_dispatch` 只有在 workflow 文件已存在于默认分支时才可用**。所以「先合 main」是发版的前置条件，不是可选项。
-2. **社区评审的 Error 级问题会让插件在社区目录里搜不到，而且同版本重发不会重跑评审**。修完必须再升一个版本号，不能靠重发原版本。
+2. **已有社区条目时，正式发布前必须用门户 Review branch 预审候选分支，报告零 Error 才能合 `main`**。预审是 Error 在不可逆的 tag/Release 之前唯一能被拦下的地方；跳过它等于把风险留到正式评审。有 Error 就修完重新预审，不能带 Error 合 main。
+3. **社区评审的 Error 级问题会让插件在社区目录里搜不到，而且同版本重发不会重跑评审**。修完必须再升一个版本号，不能靠重发原版本。
 
 ## 分支约定
 

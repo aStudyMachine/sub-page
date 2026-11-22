@@ -163,3 +163,13 @@ spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在�
 **根因**：Windows 动态保留区间覆盖了 52800（`netsh int ipv4 show excludedportrange protocol=tcp` 能看到），不是端口被进程占用，`netstat` 里没有监听者。这天上午守护进程还能正常绑定，说明保留区间会随系统服务启停漂移。
 
 **对策**：管理员执行 `net stop winnat` 释放区间，再启动守护进程；收工后 `net start winnat`。已建立的监听不受恢复影响。不要改用 `--port`：扩展固定在 52800，换端口后守护进程能起但扩展连不上。
+
+### 2.26 跳过预审直接发版，把 Error 风险留到不可逆的正式评审
+
+**现象**：0.1.2 把 `dev` 直接合入 `main`、发 Release，再走正式评审；正式评审零 Error，结果属于侥幸。
+
+**根因**：把「按受影响范围放行 UI 验收」扩大成了「预审也可以省」。预审是候选合入 `main` 之前唯一能拦下 Error 的环节；正式评审一旦 Error，同版本不能重发，只能升 `0.1.x+1`。
+
+**对策**：候选推独立分支 → 门户 **Review branch** → 报告 `Completed`、零 Error、Build verification Pass → 记录报告 SHA 与保留 Warning → 才合 `main`。预审不可用就停下来问用户，不静默跳过。修完重新预审，不能带 Error 进正式评审。
+
+**沉淀经验**：时间紧时可省的只有手动 UI 清单里与改动无关的条目；预审、构建证明核验、校验和比对不在可省范围。这条已写进 `AGENTS.md` 硬约束与发布 Skill。
