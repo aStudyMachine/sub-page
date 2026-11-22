@@ -23,6 +23,8 @@
 npm install
 npm run dev        # esbuild watch
 npm test           # vitest，全部在 node 里跑内存假库
+npm run test:e2e   # CDP 驱动真实 Obsidian，界面验收（环境不具备时跳过）
+npm run test:e2e:strict # 同上，环境不具备即失败；发版前用这个
 npm run build      # tsc --noEmit + 打包
 npm run perf       # 规模基线（默认跳过）
 ```
@@ -49,6 +51,14 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 [Studio Atlas 验收矩阵](docs/demo-vault.md) 使用 Git 管理的展示库，覆盖截图、写操作、设置、诊断和兼容性场景。
 
 ## 手动验收清单
+
+先跑自动部分，再人工补剩下的：
+
+```bash
+npm run test:e2e:strict
+```
+
+`tests/e2e/` 用 CDP 驱动真实 Obsidian：每条用例把 `test-vault/sandbox` 复制到临时目录、起独立实例、跑完销毁，不碰用户已打开的库。当前覆盖清单 **1–5、9–11、27**（9 条），下面这些条目不用再手点；**7–8、12–15、19–21、24** 以及 F2 改名、拖拽视觉反馈仍需人工。环境不具备（没装 Obsidian、sandbox 缺失）时默认打印 `SKIP: 原因` 并以 0 退出，`test:e2e:strict` 会把跳过当失败。细节见 [docs/ui-cdp-harness.md](docs/ui-cdp-harness.md)。
 
 每次改到界面或写操作，按这条序列走一遍。全程约 15 分钟。
 

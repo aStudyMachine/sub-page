@@ -8,6 +8,8 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "test:e2e:strict": "node tests/e2e/run.mjs --strict",
     "perf": "vitest run tests/perf",
     "deploy": "node scripts/deploy.mjs",
     "bump": "node scripts/bump-version.mjs",

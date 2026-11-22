@@ -12,6 +12,7 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 | `docs/adr/` | 5 篇架构决策（页面模型、路径 ID、分层边界、顺序文件、只用宿主 API） | 想改这几件事之前 |
 | `CONTRIBUTING.md` | 目录职责表、测试策略、手动验收清单、发布顺序、[Release 说明格式](CONTRIBUTING.md#release-说明的统一格式) | 提 PR、编写发布说明或发版前 |
 | `docs/agent-lessons.md` | 跨会话的踩坑记录 | 踩到坑时先查，解决后补一条 |
+| `docs/ui-cdp-harness.md` | CDP 驱动 UI 验收：命令、覆盖的清单条目、限制与排查 | 改界面、跑发版验收或 e2e 失败时 |
 | `.agents/skills/sub-page-vault-deploy/SKILL.md` | 本地部署和验收流程 | 部署到 Obsidian 库或验证部署时读 |
 | `.agents/skills/sub-page-release/SKILL.md` | 发版、社区评审与客户端验收 | 准备发布、处理社区评审或核验发布结果时 |
 | `docs/obsidian-community-release.md` | 社区门户状态、构建证明和客户端目录 | 遇到审查、产物或上架状态不一致时 |

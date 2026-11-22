@@ -2,7 +2,7 @@
 
 用 Chrome DevTools Protocol 驱动真实 Obsidian（Electron），把 `CONTRIBUTING.md` 的手动验收清单变成可重复执行的断言。
 
-状态：**Phase A（可行性验证）已完成**，结论为可行；Phase B（`tests/e2e/` 框架 + `npm run test:e2e`）尚未实现。
+状态：Phase A（可行性验证）与 Phase B（`tests/e2e/` 框架 + `npm run test:e2e`）均已完成。Phase B 当前覆盖 7 条用例，对应手动清单的 9 个条目，见 §8。
 
 ## 1. 可行性结论
 
@@ -178,12 +178,62 @@ setTimeout(() => require('electron').remote.app.quit(), 50);
 
 首启新 profile 时 Obsidian 会自己下载一次 `obsidian-1.15.1.asar`（24 MB）到 profile 目录，有网络请求和额外耗时。**复用预置好的 profile 模板**可以避开这一步，也顺带避开信任弹窗。
 
-## 8. Phase B 待做
+## 8. Phase B 实现（`tests/e2e/`）
 
-1. `tests/e2e/` 下的最小框架：profile 模板、vault 临时副本、CDP 客户端（`node:http` + `WebSocket`，无需新依赖）、页面对象（树行 / 菜单 / 弹窗）。
-2. `npm run test:e2e`；CDP 不可用时输出 skip 原因，不让 `npm test` 变红。
-3. 6 条代表场景 + 1 条重启后 `expandedIds` 保持。
-4. 断言优先读磁盘与 `data.json`；视觉项用「恢复窗口 → 挪到屏幕外 → 截图 → 最小化」留证。
+### 怎么跑
+
+```bash
+npm run test:e2e          # 不可用时打印 SKIP 原因并以 0 退出
+npm run test:e2e:strict   # 不可用时以 1 退出；发版前用这个
+```
+
+可选参数与环境变量：
+
+| 用法 | 作用 |
+| --- | --- |
+| `--only=tree` | 只跑 slug 或文件名匹配的用例 |
+| `--verbose` | 打印启动、信任、端口等步骤 |
+| `SP_E2E_TRACE=1` | 打印超过 300 ms 的 CDP 调用与等待，用来定位慢在哪 |
+| `SP_E2E_SANDBOX=<dir>` | 换一份样例库（默认 `test-vault/sandbox`） |
+| `SP_E2E_TEMPLATE=<dir>` | 使用已初始化的 profile 模板（默认每次新建） |
+
+不通过 `npm test` 触发：vitest 的 `include` 是 `tests/**/*.test.ts`，e2e 用 `.mjs`，两套互不影响，`npm run build` 的 `tsc` 也不会收它们。
+
+### 覆盖范围
+
+| 用例 | 清单条目 | 断言落点 |
+| --- | --- | --- |
+| `01-tree` 树结构与计数 | 1–3 | 11 行的顺序、缩进、计数、父页面/分组判定，`_assets` 不出现 |
+| `02-open-highlight` 打开并高亮 | 4 | `getActiveFile()`、`.is-current`、展开分组不抢高亮 |
+| `03-card-view` 卡片视图 | 5 | `.sp-block-cards`、2 张卡片、描述有无 |
+| `04-search` 搜索命中 | 9 | 只剩 `Java/jvm/堆内存.md`、`mark` 文本、Esc 清空、`java` 无结果 |
+| `05-create-page` 新建页面 | 10 | 磁盘 `最终测试页.md`、正文 `# 最终测试页`、树里出现 |
+| `06-rename-backlink` 改名反链 | 11 | 目录改名、`笔记规范.md` 里的 `[[项目A改]]` |
+| `07-restart-expanded` 重启展开态 | 27 | 重启前后 DOM 的 `expandedIds` 与 `data.json` 三方一致 |
+
+`07` 会在自己的临时库里退出再重启，不需要额外准备。
+
+### 实现要点
+
+- **每个用例一份临时库 + 独立实例**，跑完 `app.quit()` 并删除目录。库从 `test-vault/sandbox` 复制，复制后把根目录的 `main.js` / `styles.css` / `manifest.json` 覆盖进插件目录，确保测的是当前构建而不是 sandbox 里可能过期的产物。
+- **默认每次新建 profile**，靠点一次信任弹窗放行（约 0.3 s）。实测复用预置信任的 profile 时，Obsidian 会在启动阶段自动加载失败并弹「插件加载失败」，需要再显式 `enablePlugin` 一次；全新 profile 走的是首启路径，更干净。
+- 信任弹窗的出现时机随库加载速度变化，代码里轮询到它再点，并且间隔 400 ms 重试（淡入动画期间点中心可能落空）。
+- **清理按主进程 pid**：`spawn` 返回的启动器 pid 可能立刻退出，真正的主进程从 `require('electron').remote.process.pid` 取。端口 4 s 内没关才 `taskkill /T /F`，避免误杀。
+- 最小化判据是 `isMinimized() && !isVisible() && !document.hasFocus()`。Windows 上最小化后 `isFocused()` 仍可能为 `true`，不能拿它当失败条件。
+
+### 已知限制与踩坑
+
+- **`Input.dispatchMouseEvent` 的 `mouseMoved` 会卡 5 s**（最小化和屏幕外都一样，像是等一个永远不来的 ack）。点击只发 `mousePressed` + `mouseReleased` 即可，Obsidian 的点击和右键菜单都正常。拖拽仍然需要带 `buttons:1` 的 `mouseMoved`，所以 19–21 条暂未自动化。
+- **截图没有进用例**。恢复窗口挪到屏幕外那一步无法证明用户没看到一帧，视觉项继续人工（见 §6）。需要证据时按 §2 的「后台化」手动跑一次。
+- 仍未覆盖：7–8、12–15、19–21、24。机制都在 §5 标了「可自动化」，属于第二批。
+- 插件在**复用预置信任 profile** 时的启动加载失败，是宿主加载时序问题，不改 `src/` 的前提下用「显式 enable 一次」绕开；全新 profile 不触发。
+
+### 排查顺序
+
+1. 先看 `SKIP:` / 失败信息里的原始句子，别猜。
+2. `--only=<slug> --verbose` 单独复跑一条。
+3. 慢或超时加 `SP_E2E_TRACE=1`，看是哪个 CDP 调用/等待卡住。
+4. 确认没有遗留实例：`Get-CimInstance Win32_Process -Filter "name='Obsidian.exe'"` 里命令行含 `sp-e2e-` 的都该是 0 条。
 
 ## 9. 复现方式
 
@@ -195,3 +245,5 @@ Phase A 的探测脚本留在 `tmp/cdp-probe/`（`tmp/` 已被 git 忽略），�
 - `final.mjs` — 完整串跑：信任 → 最小化 → 9 条清单 → 结构检查 → 截图 → 重启并核对 `expandedIds`。
 
 目录里还有一份 `vault/`（sandbox 的干净副本）和 `userdata/`（已预置好库登记的 profile）。`userdata/obsidian-1.15.1.asar` 因为系统缓存无法删除，属正常现象，不影响复跑。
+
+**日常验收请用 `npm run test:e2e`**，不要直接跑这些探测脚本：它们没有断言、会把每次点击拖慢 5 s（带了 `mouseMoved`），也不保证清理实例。Phase A 脚本只作为调试素材保留。

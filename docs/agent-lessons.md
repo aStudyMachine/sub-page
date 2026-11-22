@@ -173,3 +173,27 @@ spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在�
 **对策**：候选推独立分支 → 门户 **Review branch** → 报告 `Completed`、零 Error、Build verification Pass → 记录报告 SHA 与保留 Warning → 才合 `main`。预审不可用就停下来问用户，不静默跳过。修完重新预审，不能带 Error 进正式评审。
 
 **沉淀经验**：时间紧时可省的只有手动 UI 清单里与改动无关的条目；预审、构建证明核验、校验和比对不在可省范围。这条已写进 `AGENTS.md` 硬约束与发布 Skill。
+
+### 2.27 CDP 的 mouseMoved 会让每次点击卡 5 秒
+
+**现象**：`tests/e2e/` 早期每个用例 10–16 s，单看 CDP `Input.dispatchMouseEvent` 只有 `mouseMoved` 恰好 5000–5017 ms，`mousePressed` / `mouseReleased` 都是 0–3 ms；窗口最小化和挪到屏幕外都一样。
+
+**根因**：Electron 对 `mouseMoved` 的输入 ack 在隐藏/后台窗口上不返回，Chromium 等满 5 s 超时才放行。点击本身并不需要先移动指针，坐标已经随 pressed/released 一起传了。
+
+**对策**：点击只发 `mousePressed` + `mouseReleased`，删掉 `mouseMoved`。整套 7 条用例从 64 s 降到 13 s。拖拽仍需要带 `buttons:1` 的 `mouseMoved`，所以拖拽用例要单独评估耗时。
+
+### 2.28 信任弹窗的时机和「插件加载失败」都是时序问题
+
+**现象**：全新 profile 首启时，若连上 CDP 后只查一次 `.modal.mod-trust-folder`，有时查不到；点了信任立刻调 `enablePlugin` 会弹「插件加载失败」并一直不加载。复用预置信任的 profile 时，启动阶段也会自动加载失败，手动 `enablePlugin` 一次才好。
+
+**根因**：信任弹窗要等库加载到某一步才挂载；点完信任后 Obsidian 自己会去加载社区插件（实测约 500 ms），这段时间里再调 `enablePlugin` 会打断它。预置信任的 profile 让 Obsidian 在更早的启动阶段尝试加载，撞上插件尚未准备好的时序。
+
+**对策**：轮询信任弹窗（不是查一次），点完先给自动加载留 8 s 再考虑显式启用；没有信任弹窗的旧 profile 等 3 s 后再显式启用。气泡里的「加载失败」不影响后续手动启用成功，但意味着这条路径要按「重试」设计，不能按「一次成功」设计。
+
+### 2.29 spawn 到的 pid 不一定是 Obsidian 主进程
+
+**现象**：用 `spawn(Obsidian.exe, [...])` 的返回值做 `taskkill /PID <pid> /T /F`，测试跑完仍留下整批 `--user-data-dir` 指向临时目录的 Obsidian 进程。
+
+**根因**：Obsidian 启动器会转手拉起真正的主进程，`spawn` 得到的 pid 可能已经退出；对已退出的 pid 执行 taskkill 不会波及新主进程及其子进程。
+
+**对策**：连上 CDP 后从渲染进程取 `require('electron').remote.process.pid`，这才是主进程。清理时先 `app.quit()` 并等端口关闭；4 s 没关再按主进程 pid 杀。测试收尾要顺手查一次 `Get-CimInstance Win32_Process -Filter "name='Obsidian.exe'"`，命令行里带 `sp-e2e-` 的应为 0 条。
