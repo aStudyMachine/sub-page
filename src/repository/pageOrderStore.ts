@@ -125,25 +125,42 @@ export class PageOrderStore {
 	}
 
 	/** 改名时保留原来的手动排序位置。 */
-	async renameKey(scope: string, oldKey: string, newKey: string): Promise<void> {
+	async renameKey(scope: string, oldKey: string, newKey: string, subtree?: { from: string; to: string }): Promise<void> {
 		return this.mutate((order) => {
 			const keys = order[scope];
 			if (keys?.includes(oldKey)) order[scope] = keys.map((key) => key === oldKey ? newKey : key);
+			if (subtree) this.remapScopes(order, subtree.from, subtree.to);
 		});
 	}
 
 	/** 从源作用域摘掉，插到目标作用域末尾。 */
-	async moveKey(fromScope: string, toScope: string, key: string, newKey = key): Promise<void> {
-		if (fromScope === toScope) return this.renameKey(fromScope, key, newKey);
+	async moveKey(fromScope: string, toScope: string, key: string, newKey = key, options: {
+		subtree?: { from: string; to: string };
+		destinationKeys?: string[];
+		paired?: { scope: string; oldKey: string; newKey: string };
+	} = {}): Promise<void> {
+		if (fromScope === toScope && !options.destinationKeys) return this.renameKey(fromScope, key, newKey, options.subtree);
 		return this.mutate((order) => {
 			this.replaceKeys(order, fromScope, (order[fromScope] ?? []).filter((item) => item !== key));
-			order[toScope] = [...(order[toScope] ?? []).filter((item) => item !== newKey), newKey];
+			order[toScope] = options.destinationKeys ?? [...(order[toScope] ?? []).filter((item) => item !== newKey), newKey];
+			const { paired, subtree } = options;
+			if (paired && order[paired.scope]?.includes(paired.oldKey)) {
+				order[paired.scope] = order[paired.scope].map((item) => item === paired.oldKey ? paired.newKey : item);
+			}
+			if (subtree) this.remapScopes(order, subtree.from, subtree.to);
 		});
 	}
 
 	async removeFromScope(scope: string, key: string): Promise<void> {
+		return this.removeEntries([{ scope, key }]);
+	}
+
+	async removeEntries(entries: readonly { scope: string; key: string }[], subtree?: string): Promise<void> {
 		return this.mutate((order) => {
-			if (order[scope]?.includes(key)) this.replaceKeys(order, scope, order[scope].filter((item) => item !== key));
+			for (const { scope, key } of entries) {
+				if (order[scope]?.includes(key)) this.replaceKeys(order, scope, order[scope].filter((item) => item !== key));
+			}
+			if (subtree !== undefined) this.deleteScopeTree(order, subtree);
 		});
 	}
 
@@ -158,17 +175,19 @@ export class PageOrderStore {
 
 	/** 父页面改名或移动时，将整棵子树的作用域搬到新路径。 */
 	async remapScopeTree(from: string, to: string): Promise<void> {
+		return this.mutate((order) => this.remapScopes(order, from, to));
+	}
+
+	private remapScopes(order: OrderMap, from: string, to: string): void {
 		if (from === to) return;
-		return this.mutate((order) => {
-			for (const key of Object.keys(order)) {
-				if (key !== from && !key.startsWith(from + "/")) continue;
-				const next = to + key.slice(from.length);
-				const keys = order[key];
-				delete order[key];
-				const existing = order[next] ?? [];
-				order[next] = [...existing, ...keys.filter((item) => !existing.includes(item))];
-			}
-		});
+		for (const key of Object.keys(order)) {
+			if (key !== from && !key.startsWith(from + "/")) continue;
+			const next = to + key.slice(from.length);
+			const keys = order[key];
+			delete order[key];
+			const existing = order[next] ?? [];
+			order[next] = [...existing, ...keys.filter((item) => !existing.includes(item))];
+		}
 	}
 
 	async removeScopeTree(scope: string): Promise<void> {

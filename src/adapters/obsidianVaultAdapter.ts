@@ -219,7 +219,11 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 			vault.on("rename", (file: TAbstractFile, oldPath: string) =>
 				handler({ kind: "rename", path: file.path, oldPath, oldName: oldPath.split("/").pop() }),
 			),
-			vault.on("modify", (file: TAbstractFile) => handler({ kind: "modify", path: file.path })),
+			vault.on("modify", (file) => handler({
+				kind: "modify",
+				path: file.path,
+				mtime: file instanceof TFile ? file.stat.mtime : undefined,
+			})),
 		];
 		return () => {
 			for (const ref of refs) vault.offref(ref);

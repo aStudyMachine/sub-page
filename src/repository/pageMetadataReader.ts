@@ -1,6 +1,7 @@
 import { VaultAdapter } from "../adapters/vaultAdapter";
 import { PageMetadata, EMPTY_METADATA, metadataFromFrontMatter } from "../models/pageMetadata";
 import { PageNode } from "../models/pageNode";
+import { isSameOrDescendantPath } from "../utils/pathUtils";
 
 /**
  * 元数据读取：与扫描分开，因为读文件内容比读目录贵一个数量级。
@@ -10,12 +11,17 @@ import { PageNode } from "../models/pageNode";
  * 外部修改由事件处理里忘掉。靠时间戳猜失效会漏掉「同一毫秒内改两次」这种情形。
  */
 export class PageMetadataReader {
-	private cache = new Map<string, PageMetadata>();
+	private cache = new Map<string, Promise<PageMetadata>>();
 
 	constructor(private readonly adapter: VaultAdapter) {}
 
-	forget(path: string): void {
-		this.cache.delete(path.toLowerCase());
+	forget(path: string, includeChildren = false): void {
+		this.cache.delete(path);
+		if (!includeChildren) return;
+		const folder = path.toLowerCase();
+		for (const key of this.cache.keys()) {
+			if (isSameOrDescendantPath(key.toLowerCase(), folder)) this.cache.delete(key);
+		}
 	}
 
 	clear(): void {
@@ -24,13 +30,20 @@ export class PageMetadataReader {
 
 	async read(node: PageNode): Promise<PageMetadata> {
 		if (!node.filePath) return EMPTY_METADATA;
-		const key = node.filePath.toLowerCase();
+		const key = node.filePath;
 		const cached = this.cache.get(key);
 		if (cached) return cached;
-		const frontmatter = await this.adapter.readFrontMatter(node.filePath);
-		const metadata = frontmatter ? metadataFromFrontMatter(frontmatter) : EMPTY_METADATA;
-		this.cache.set(key, metadata);
-		return metadata;
+		const pending: Promise<PageMetadata> = this.adapter.readFrontMatter(key).then(
+			(frontmatter) => this.cache.get(key) === pending && frontmatter
+				? metadataFromFrontMatter(frontmatter)
+				: EMPTY_METADATA,
+			(error) => {
+				if (this.cache.get(key) === pending) this.cache.delete(key);
+				throw error;
+			},
+		);
+		this.cache.set(key, pending);
+		return pending;
 	}
 
 	/** 批量补齐，供首屏渲染用。单个失败不影响其它节点。 */

@@ -25,6 +25,12 @@ function makeService(vault: FakeVault, overrides: Partial<typeof DEFAULT_SETTING
 
 const settle = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function gate() {
+	let release!: () => void;
+	const ready = new Promise<void>((resolve) => { release = resolve; });
+	return { ready, release };
+}
+
 describe("自动还原无子页面的笔记", () => {
 	it("旧设置默认开启，保留明确关闭的设置", () => {
 		expect(migrateSettings({}).settings.collapseEmptyParents).toBe(true);
@@ -132,6 +138,65 @@ describe("自动还原无子页面的笔记", () => {
 });
 
 describe("启动与刷新", () => {
+	it("等待扫描期间请求的补扫和排队的新建", async () => {
+		const vault = new FakeVault({ "已有.md": "" });
+		const { service } = makeService(vault);
+		await service.start();
+		const scanned = gate();
+		const resume = gate();
+		const list = vault.listFolder.bind(vault);
+		vi.spyOn(vault, "listFolder").mockImplementationOnce(async (path) => {
+			const listing = await list(path);
+			scanned.release();
+			await resume.ready;
+			return listing;
+		});
+		try {
+			const first = service.refresh();
+			await scanned.ready;
+			vault.seedFile("补扫.md");
+			const followup = service.refresh();
+			const created = service.operations.createPage(null, "操作新建");
+			resume.release();
+			await followup;
+			expect(service.getNode(id("补扫.md"))).toBeDefined();
+			await first;
+			expect(await created).toMatchObject({ ok: true });
+			expect(service.getNode(id("操作新建.md"))).toBeDefined();
+		} finally {
+			service.dispose();
+		}
+	});
+
+	it("删除与同时请求的空父页面还原不会交错", async () => {
+		const vault = new FakeVault({ "A/A.md": "原笔记" });
+		const settings = { collapseEmptyParents: false };
+		const { service, problems } = makeService(vault, settings);
+		await service.start();
+		const trash = vault.trash.bind(vault);
+		const resume = gate();
+		const rename = vi.spyOn(vault, "renameFile");
+		vi.spyOn(vault, "trash").mockImplementationOnce(async (path, system) => {
+			await resume.ready;
+			return trash(path, system);
+		});
+		try {
+			settings.collapseEmptyParents = true;
+			const deletion = service.operations.deletePage(id("A"), { withChildren: true, useTrash: true });
+			const refresh = Promise.resolve().then(() => service.refresh());
+			await settle(0);
+			resume.release();
+			await refresh;
+			expect(await deletion).toMatchObject({ ok: true, value: { deletedPages: 1 } });
+			expect(vault.filePaths()).not.toContain("A.md");
+			expect(vault.filePaths()).not.toContain("A/A.md");
+			expect(problems).toEqual([]);
+			expect(rename).not.toHaveBeenCalled();
+		} finally {
+			service.dispose();
+		}
+	});
+
 	it("启动后索引可用", async () => {
 		const { service } = makeService(sampleVault());
 		await service.start();
@@ -240,6 +305,34 @@ it("自己写顺序文件不触发刷新", async () => {
 });
 
 describe("页面根切换", () => {
+	it("快速切回原根时旧操作不能删除同名页面或更改顺序", async () => {
+		const vault = new FakeVault({ "A/同名.md": "甲", "B/同名.md": "乙" });
+		const { service } = makeService(vault, { pageRoot: "A" });
+		await service.start();
+		try {
+			const oldOperations = service.operations;
+			await oldOperations.reorderScope(null, ["同名.md"]);
+			const saving = gate();
+			const resume = gate();
+			const moveToB = service.setPageRoot("B", async () => {
+				saving.release();
+				await resume.ready;
+			});
+			await saving.ready;
+			const moveToA = service.setPageRoot("A");
+			const stale = oldOperations.deletePage(id("同名.md"), { withChildren: true, useTrash: true });
+			resume.release();
+			await Promise.all([moveToB, moveToA]);
+			expect(await stale).toMatchObject({ ok: false, reason: "page-root-changed" });
+			expect(service.pageRoot).toBe("A");
+			expect(service.order.getKeys("")).toEqual(["同名.md"]);
+			expect(vault.content("A/同名.md")).toBe("甲");
+			expect(vault.content("B/同名.md")).toBe("乙");
+		} finally {
+			service.dispose();
+		}
+	});
+
 	it("切换后索引与顺序都换成新根", async () => {
 		const vault = new FakeVault({ "A/甲.md": "", "B/乙.md": "" });
 		const settings = { ...DEFAULT_SETTINGS };
@@ -285,6 +378,31 @@ describe("查询", () => {
 		expect(metadata.icon).toBe("📁");
 		expect(metadata.description).toBe("一个父页面");
 		service.dispose();
+	});
+
+	it("同一笔记共用在途元数据，失效后的旧结果不会覆盖新值", async () => {
+		const vault = new FakeVault({ "测试.md": "" });
+		const { service } = makeService(vault);
+		await service.start();
+		const resume = gate();
+		const read = vi.spyOn(vault, "readFrontMatter")
+			.mockImplementationOnce(async () => {
+				await resume.ready;
+				return { icon: "old" };
+			})
+			.mockResolvedValueOnce({ icon: "new" });
+		try {
+			const previous = [service.metadataFor(id("测试.md")), service.metadataFor(id("测试.md"))];
+			expect(read).toHaveBeenCalledTimes(1);
+			await vault.writeText("测试.md", "新内容");
+			expect(await service.metadataFor(id("测试.md"))).toEqual({ icon: "new" });
+			resume.release();
+			expect(await Promise.all(previous)).toEqual([{}, {}]);
+			expect(await service.metadataFor(id("测试.md"))).toEqual({ icon: "new" });
+			expect(read).toHaveBeenCalledTimes(2);
+		} finally {
+			service.dispose();
+		}
 	});
 
 	it("没有元数据的页面返回空对象", async () => {

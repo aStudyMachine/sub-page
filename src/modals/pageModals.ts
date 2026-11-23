@@ -2,6 +2,7 @@ import { App, Modal, Notice, Setting, TextComponent } from "obsidian";
 import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import { checkName } from "../utils/nameValidator";
+import type { PageOperationService } from "../core/pageOperationService";
 import type SubPagePlugin from "../main";
 
 /**
@@ -13,12 +14,14 @@ abstract class InputModal extends Modal {
 	protected errorEl!: HTMLElement;
 	protected submitButton!: HTMLButtonElement;
 	private problem: string | null = null;
+	protected readonly operations: PageOperationService;
 
 	constructor(
 		app: App,
 		protected readonly plugin: SubPagePlugin,
 	) {
 		super(app);
+		this.operations = plugin.service.operations;
 	}
 
 	abstract get titleText(): string;
@@ -72,6 +75,11 @@ abstract class InputModal extends Modal {
 	}
 
 	private async trySubmit(): Promise<void> {
+		if (!this.plugin.service.isCurrentOperationSource(this.operations)) {
+			new Notice(this.plugin.t("error.pageRootChanged"));
+			this.close();
+			return;
+		}
 		this.revalidate();
 		if (this.problem !== null) {
 			new Notice(this.problem);
@@ -162,7 +170,7 @@ export class CreatePageModal extends InputModal {
 
 	async submit(value: string): Promise<void> {
 		const template = await this.plugin.loadTemplate();
-		const result = await this.plugin.service.operations.createPage(this.options.parentId, value, {
+		const result = await this.operations.createPage(this.options.parentId, value, {
 			template,
 			defaultTitle: this.options.defaultTitle,
 		});
@@ -170,10 +178,11 @@ export class CreatePageModal extends InputModal {
 			new Notice(result.message);
 			return;
 		}
-		const title = this.plugin.service.getNode(result.value)?.title ?? (value || this.options.defaultTitle);
+		const current = this.plugin.service.isCurrentOperationSource(this.operations);
+		const title = (current ? this.plugin.service.getNode(result.value)?.title : undefined) ?? (value || this.options.defaultTitle);
 		new Notice(this.plugin.t("notice.created", { title }));
 		if (result.warning) new Notice(result.warning);
-		this.options.onCreated(result.value);
+		if (current) this.options.onCreated(result.value);
 	}
 
 	onOpen(): void {
@@ -217,12 +226,13 @@ export class RenamePageModal extends InputModal {
 
 	async submit(value: string): Promise<void> {
 		if (value === this.node.title) return;
-		const result = await this.plugin.service.operations.renamePage(this.node.id, value);
+		const result = await this.operations.renamePage(this.node.id, value);
 		if (!result.ok) {
 			new Notice(result.message);
 			return;
 		}
 		new Notice(this.plugin.t("notice.renamed", { title: value }));
+		if (result.warning) new Notice(result.warning);
 	}
 }
 
@@ -272,7 +282,7 @@ export class MovePageModal extends InputModal {
 			new Notice(target);
 			return;
 		}
-		const result = await this.plugin.service.operations.movePage(this.node.id, target);
+		const result = await this.operations.movePage(this.node.id, target);
 		if (!result.ok) {
 			new Notice(result.message);
 			return;

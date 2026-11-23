@@ -22,7 +22,7 @@ export default class SubPagePlugin extends Plugin {
 
 	/** 索引与写操作的门面；onload 里创建，视图与块都只依赖它。 */
 	service!: PageService;
-	private pageRootPromise: Promise<void> | null = null;
+	private settingsWrites = Promise.resolve();
 	/** 功能区按钮。语言切换后要改它的提示文字，所以留着引用。 */
 	private ribbonEl: HTMLElement | null = null;
 
@@ -39,6 +39,7 @@ export default class SubPagePlugin extends Plugin {
 			onChange: () => this.refreshViews(),
 			onIdsRenamed: (from, to) => this.remapExpandedIds(from, to),
 			onProblem: (message) => new Notice(message, 6000),
+			t: (key, vars) => this.t(key, vars),
 			debounceMs: 200,
 		});
 		this.register(() => this.service.dispose());
@@ -91,8 +92,14 @@ export default class SubPagePlugin extends Plugin {
 		if (changed) await this.saveSettings();
 	}
 
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+	private writeSettings(write: () => Promise<void>): Promise<void> {
+		const result = this.settingsWrites.then(write);
+		this.settingsWrites = result.catch(() => undefined);
+		return result;
+	}
+
+	saveSettings(): Promise<void> {
+		return this.writeSettings(() => this.saveData(this.settings));
 	}
 
 	async updateSettings(patch: Partial<SubPageSettings>): Promise<void> {
@@ -101,11 +108,11 @@ export default class SubPagePlugin extends Plugin {
 	}
 
 	/** 页面根改了：重扫并让所有视图重建，展开状态留在旧根里没有意义。 */
-	async applyPageRoot(): Promise<void> {
-		this.settings = { ...this.settings, expandedIds: [] };
-		await this.saveSettings();
-		await this.service.setPageRoot(this.settings.pageRoot);
-		this.refreshViews();
+	async applyPageRoot(pageRoot: string): Promise<void> {
+		await this.service.setPageRoot(pageRoot, () => this.writeSettings(async () => {
+			await this.saveData({ ...this.settings, pageRoot, expandedIds: [] });
+			this.settings = { ...this.settings, pageRoot, expandedIds: [] };
+		}));
 	}
 
 	async refreshIndex(): Promise<void> {
@@ -144,6 +151,7 @@ export default class SubPagePlugin extends Plugin {
 	}
 
 	async setExpandedIds(ids: Set<string>): Promise<void> {
+		if (!this.service.isCurrentOperationSource(this.service.operations)) return;
 		const next = Array.from(ids);
 		if (next.length === this.settings.expandedIds.length && next.every((id) => this.settings.expandedIds.includes(id))) {
 			return;

@@ -31,9 +31,14 @@ export class SubPageSettingTab extends PluginSettingTab {
 			await this.subPage.refreshIndex();
 			return;
 		}
-		await this.subPage.updateSettings(migrateSettings({ ...this.subPage.settings, [key]: value }).settings);
-		// 页面根变了要重扫；语言变了要重注册命令与重建面板文案。
-		if (key === "pageRoot") await this.subPage.applyPageRoot();
+		const next = migrateSettings({ ...this.subPage.settings, [key]: value }).settings;
+		if (key === "pageRoot") {
+			await this.subPage.applyPageRoot(next.pageRoot);
+			return;
+		}
+		const settingKey = key as keyof SubPageSettings;
+		await this.subPage.updateSettings({ [settingKey]: next[settingKey] });
+		// 语言变了要重注册命令与重建面板文案。
 		if (key === "language") {
 			this.subPage.refreshLanguage();
 			this.update();

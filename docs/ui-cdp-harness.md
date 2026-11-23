@@ -2,7 +2,7 @@
 
 用 Chrome DevTools Protocol 驱动真实 Obsidian（Electron），把 `CONTRIBUTING.md` 的手动验收清单变成可重复执行的断言。
 
-状态：Phase A（可行性验证）与 Phase B（`tests/e2e/` 框架 + `npm run test:e2e`）均已完成。Phase B 当前覆盖 7 条用例，对应手动清单的 9 个条目，见 §8。
+状态：Phase A（可行性验证）与 Phase B（`tests/e2e/` 框架 + `npm run test:e2e`）均已完成。当前有 10 条场景用例，见 §8。
 
 ## 1. 可行性结论
 
@@ -127,8 +127,8 @@ setTimeout(() => require('electron').remote.app.quit(), 50);
 | 勾选复选框 | 点 `.checkbox-container` | 生效，`is-enabled` 类正确切换 |
 | 拖拽（真实鼠标） | `mousePressed` → 多次带 `buttons:1` 的 `mouseMoved` → `mouseReleased` | 生效，`设计` 变成 `Java/设计.md` 并落盘 |
 | 拖拽（合成事件） | `new DragEvent(..., {dataTransfer})` + `dragstart/dragover/drop` | 同样生效；比真实鼠标快，但绕过了命中测试 |
-| 键盘 Enter / 方向键 / Esc | `Input.dispatchKeyEvent` | 生效（Enter 打开页面、ArrowDown 移动焦点框、Esc 清空搜索/关弹窗） |
-| 键盘 F2 改名 | 同上 | **不生效**。Obsidian 把 F2 绑给了 `workspace:edit-file-title`，按键到不了渲染进程（F3 能到，F2 不能）。改名只能走右键菜单 |
+| 键盘 Tab / Enter / 方向键 / Esc | `Input.dispatchKeyEvent` | 生效（Tab 进入搜索命中行、Enter 打开页面、方向键导航、Esc 清空搜索或关闭弹窗） |
+| 键盘 F2 改名 / Delete 删除 | 同上 | 侧栏行聚焦时打开该行对应的弹窗。F2 在窗口捕获阶段处理，以免被宿主的 `workspace:edit-file-title` 抢先捕获 |
 | 命令触发弹窗 | `executeCommandById` | 窗口有焦点时才挂载；无焦点时命令返回成功但弹窗不出现，见 §2 |
 | 截图 | 窗口最小化时挂起；恢复并挪到屏幕外后正常 | 见 §2 |
 
@@ -161,7 +161,6 @@ setTimeout(() => require('electron').remote.app.quit(), 50);
 
 ## 6. 仍然只能人工的部分
 
-- **F2 快捷改名**：按键到不了渲染进程（宿主绑走了），CDP 无法验证。改名本身可用右键菜单覆盖，但「F2 也能改名」这一条只能人工。
 - **拖拽的视觉反馈**：插入位置指示线、拖到后代时的拒绝提示属于渲染样式，断言能验结果（树/磁盘不变），验不了过程中画了什么。
 - **窗口抢焦点**：无法完全避免，见 §1。
 
@@ -206,10 +205,13 @@ npm run test:e2e:strict   # 不可用时以 1 退出；发版前用这个
 | `01-tree` 树结构与计数 | 1–3 | 11 行的顺序、缩进、计数、父页面/分组判定，`_assets` 不出现 |
 | `02-open-highlight` 打开并高亮 | 4 | `getActiveFile()`、`.is-current`、展开分组不抢高亮 |
 | `03-card-view` 卡片视图 | 5 | `.sp-block-cards`、2 张卡片、描述有无 |
-| `04-search` 搜索命中 | 9 | 只剩 `Java/jvm/堆内存.md`、`mark` 文本、Esc 清空、`java` 无结果 |
+| `04-search` 搜索命中 | 9 | 高亮、Tab 与方向键聚焦命中行、Enter/F2/Delete 指向同一命中项、Esc 清空、无结果时无可操作行 |
 | `05-create-page` 新建页面 | 10 | 磁盘 `最终测试页.md`、正文 `# 最终测试页`、树里出现 |
 | `06-rename-backlink` 改名反链 | 11 | 目录改名、`笔记规范.md` 里的 `[[项目A改]]` |
 | `07-restart-expanded` 重启展开态 | 27 | 重启前后 DOM 的 `expandedIds` 与 `data.json` 三方一致 |
+| `08-page-root` 页面根空状态 | | 空目录可新建页面，缺失目录显示设置入口 |
+| `09-block-sort` 正文块排序 | 6 | 自然名称、手动顺序、保存笔记后的修改时间顺序 |
+| `10-drag-between` 跨目录拖放 | 19 | 合成拖放事件验证文件移动、侧栏行位置以及 `order.json` |
 
 `07` 会在自己的临时库里退出再重启，不需要额外准备。
 
@@ -223,9 +225,9 @@ npm run test:e2e:strict   # 不可用时以 1 退出；发版前用这个
 
 ### 已知限制与踩坑
 
-- **`Input.dispatchMouseEvent` 的 `mouseMoved` 会卡 5 s**（最小化和屏幕外都一样，像是等一个永远不来的 ack）。点击只发 `mousePressed` + `mouseReleased` 即可，Obsidian 的点击和右键菜单都正常。拖拽仍然需要带 `buttons:1` 的 `mouseMoved`，所以 19–21 条暂未自动化。
+- **`Input.dispatchMouseEvent` 的 `mouseMoved` 会卡 5 s**（最小化和屏幕外都一样，像是等一个永远不来的 ack）。点击只发 `mousePressed` + `mouseReleased` 即可。跨目录拖放用例通过合成事件验证落盘与顺序，鼠标命中与拖动中的视觉反馈仍需人工检查。
 - **截图没有进用例**。恢复窗口挪到屏幕外那一步无法证明用户没看到一帧，视觉项继续人工（见 §6）。需要证据时按 §2 的「后台化」手动跑一次。
-- 仍未覆盖：7–8、12–15、19–21、24。机制都在 §5 标了「可自动化」，属于第二批。
+- 仍未覆盖：7–8、12–15、20–21、24。机制都在 §5 标了「可自动化」，属于第二批。
 - 插件在**复用预置信任 profile** 时的启动加载失败，是宿主加载时序问题，不改 `src/` 的前提下用「显式 enable 一次」绕开；全新 profile 不触发。
 
 ### 排查顺序

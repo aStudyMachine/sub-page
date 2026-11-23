@@ -7,7 +7,7 @@ import { checkName } from "../utils/nameValidator";
 import { basename, dirname, isMarkdownFile, joinPath, normalizePath, stripExtension } from "../utils/pathUtils";
 import { AgentSkillInstaller } from "./agentSkillInstaller";
 
-export type OpFailureReason = "invalid-name" | "name-conflict" | "not-found" | "not-allowed" | "io-error";
+export type OpFailureReason = "invalid-name" | "name-conflict" | "not-found" | "not-allowed" | "io-error" | "page-root-changed";
 
 export type OpResult<T = void> = { ok: true; value: T; warning?: string } | { ok: false; reason: OpFailureReason; message: string };
 
@@ -41,6 +41,8 @@ export interface OperationDeps {
 	 * 不搬的话用户排好的展开层级会在下一次 pruneExpanded 里被当成脏数据丢掉。
 	 */
 	renameIds?(from: string, to: string): Promise<void>;
+	run?<T>(action: () => Promise<OpResult<T>>): Promise<OpResult<T>>;
+	t?(key: string, vars?: Record<string, string>): string;
 }
 
 /**
@@ -58,6 +60,25 @@ export class PageOperationService {
 		this.agentSkill = new AgentSkillInstaller(deps.adapter);
 		this.adapter = deps.adapter;
 		this.order = deps.order;
+	}
+
+	private run<T>(action: () => Promise<OpResult<T>>): Promise<OpResult<T>> {
+		return this.deps.run ? this.deps.run(action) : action();
+	}
+
+	private text(key: string, fallback: string, detail: string): string {
+		return this.deps.t?.(key, { detail }) ?? fallback.replace("{detail}", () => detail);
+	}
+
+	private async afterFileChange<T>(value: T, save: () => Promise<void>): Promise<OpResult<T>> {
+		let warning: string | undefined;
+		try {
+			await save();
+		} catch (error) {
+			warning = this.text("notice.pageAuxiliarySave", "文件操作已完成，顺序或展开状态未能保存：{detail}", messageOf(error));
+		}
+		await this.deps.refresh();
+		return warning ? { ok: true, value, warning } : ok(value);
 	}
 
 	private abs(relative: string): string {
@@ -101,7 +122,11 @@ export class PageOperationService {
 
 	// ---------------------------------------------------------------- 新建
 
-	async createPage(parentId: PageId | null, rawTitle: string, options: CreateOptions = {}): Promise<OpResult<PageId>> {
+	createPage(parentId: PageId | null, rawTitle: string, options: CreateOptions = {}): Promise<OpResult<PageId>> {
+		return this.run(() => this.createPageInRoot(parentId, rawTitle, options));
+	}
+
+	private async createPageInRoot(parentId: PageId | null, rawTitle: string, options: CreateOptions): Promise<OpResult<PageId>> {
 		const enteredTitle = rawTitle.trim();
 		const baseTitle = enteredTitle || options.defaultTitle || "";
 		const check = checkName(baseTitle);
@@ -155,13 +180,20 @@ export class PageOperationService {
 
 	// ---------------------------------------------------------------- 改名
 
-	async renamePage(id: PageId, rawTitle: string): Promise<OpResult<PageId>> {
+	renamePage(id: PageId, rawTitle: string): Promise<OpResult<PageId>> {
+		return this.run(() => this.renamePageInRoot(id, rawTitle));
+	}
+
+	private async renamePageInRoot(id: PageId, rawTitle: string): Promise<OpResult<PageId>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		const title = rawTitle.trim();
 		if (title === node.title) return ok(id);
 		const check = checkName(title);
 		if (!check.ok) return fail("invalid-name", describeNameProblem(check.problem, check.detail));
+		if (node.kind !== "leaf" && this.isExcluded(title)) {
+			return fail("not-allowed", this.text("error.excludedFolderName", "目录名「{detail}」在排除范围内", title));
+		}
 
 		const parentFolder = node.parentId ? this.abs(node.parentId) : this.deps.getPageRoot();
 		if (await this.checkConflict(parentFolder, title, this.selfPaths(node))) {
@@ -176,9 +208,8 @@ export class PageOperationService {
 			} catch (error) {
 				return fail("io-error", `重命名失败：${messageOf(error)}`);
 			}
-			await this.order.renameKey(scopeOfNode(node), basename(from), basename(to));
-			await this.deps.refresh();
-			return ok(this.relativeId(to) as PageId);
+			return this.afterFileChange(this.relativeId(to) as PageId,
+				() => this.order.renameKey(scopeOfNode(node), basename(from), basename(to)));
 		}
 
 		if (node.kind === "group") {
@@ -189,11 +220,7 @@ export class PageOperationService {
 			} catch (error) {
 				return fail("io-error", `重命名失败：${messageOf(error)}`);
 			}
-		await this.order.renameKey(scopeOfNode(node), basename(from), title);
-		await this.order.remapScopeTree(node.id, this.relativeId(to));
-		await this.deps.renameIds?.(node.id, this.relativeId(to));
-		await this.deps.refresh();
-		return ok(this.relativeId(to) as PageId);
+			return this.finishFolderRename(node, to, title);
 	}
 
 		// 父页面：目录与同名笔记都要改。先改目录、再改笔记；第二步失败必须把目录改回去，
@@ -209,20 +236,53 @@ export class PageOperationService {
 		try {
 			await this.adapter.renameFile(joinPath(toFolder, basename(fromFile)), joinPath(toFolder, title + ".md"));
 		} catch (error) {
-			await this.adapter.renameFolder(toFolder, fromFolder).catch(() => undefined);
+			try {
+				await this.adapter.renameFolder(toFolder, fromFolder);
+			} catch (rollbackError) {
+				await this.deps.refresh();
+				return fail("io-error", this.text("error.renameRollback", "改名失败且未能恢复原目录：{detail}",
+					`${messageOf(error)} / ${messageOf(rollbackError)}`));
+			}
 			return fail("io-error", `重命名失败（已回滚）：${messageOf(error)}`);
 		}
-		await this.order.renameKey(scopeOfNode(node), basename(fromFolder), title);
-		// 子页面的排列顺序与展开状态都挂在以旧 id 为作用域的地方，必须一起搬过去。
-		await this.order.remapScopeTree(node.id, this.relativeId(toFolder));
-		await this.deps.renameIds?.(node.id, this.relativeId(toFolder));
-		await this.deps.refresh();
-		return ok(this.relativeId(toFolder) as PageId);
+		return this.finishFolderRename(node, toFolder, title);
+	}
+
+	private finishFolderRename(node: PageNode, to: string, title: string): Promise<OpResult<PageId>> {
+		const id = this.relativeId(to) as PageId;
+		return this.afterFileChange(id, () => this.saveFolderChange(node.id, id,
+			() => this.order.renameKey(scopeOfNode(node), childKey(node), title, { from: node.id, to: id })));
+	}
+
+	private async saveFolderChange(from: PageId, to: PageId, saveOrder: () => Promise<void>): Promise<void> {
+		const saves = await Promise.allSettled([saveOrder(), this.deps.renameIds?.(from, to)]);
+		const errors = saves.flatMap((result) => result.status === "rejected" ? [messageOf(result.reason)] : []);
+		if (errors.length) throw new Error(errors.join(" / "));
 	}
 
 	// ---------------------------------------------------------------- 移动
 
-	async movePage(id: PageId, targetParentId: PageId | null): Promise<OpResult<PageId>> {
+	movePage(id: PageId, targetParentId: PageId | null): Promise<OpResult<PageId>> {
+		return this.run(() => this.movePageInRoot(id, targetParentId));
+	}
+
+	moveBeside(id: PageId, targetId: PageId, position: "before" | "after"): Promise<OpResult<PageId>> {
+		return this.run(async () => {
+			const node = this.deps.getNode(id);
+			const target = this.deps.getNode(targetId);
+			if (!node || !target) return fail("not-found", "页面不在索引里");
+			if (id === targetId) return ok(id);
+			const scope = target.parentId;
+			const siblings = this.deps.getChildren(scope).filter((item) => item.id !== id).map(childKey);
+			const index = siblings.indexOf(childKey(target));
+			siblings.splice(index + (position === "after" ? 1 : 0), 0, childKey(node));
+			if (node.parentId !== scope) return this.movePageInRoot(id, scope, siblings);
+			const result = await this.reorderScopeInRoot(scope, siblings);
+			return result.ok ? ok(id) : result;
+		});
+	}
+
+	private async movePageInRoot(id: PageId, targetParentId: PageId | null, destinationKeys?: string[]): Promise<OpResult<PageId>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		if (targetParentId && isDescendantId(targetParentId, id)) {
@@ -232,18 +292,18 @@ export class PageOperationService {
 
 		const parent = targetParentId ? this.deps.getNode(targetParentId) : undefined;
 		if (targetParentId && !parent) return fail("not-found", "父页面不在索引里，请先重建索引");
+		if (this.exceedsFolderDepth(node, (parent?.depth ?? 0) + 1)) {
+			return fail("not-allowed", this.text("error.moveDepth", "移动后子页面目录将超出页面树扫描范围", ""));
+		}
 
 		if (parent?.kind === "leaf") {
 			if (parent.title.toLowerCase() === node.title.toLowerCase()) {
 				return fail("name-conflict", `目标位置已经有「${node.title}」了`);
 			}
-			if (this.exceedsFolderDepth(node, parent.depth + 1)) {
-				return fail("not-allowed", "移动后子页面目录将超出页面树扫描范围");
-			}
 			return this.pairLeaf(
 				parent,
 				(folder) => this.moveIntoFolder(node, folder),
-				(resultId, parentId) => this.recordMove(node, parentId, resultId),
+				(resultId, parentId) => this.recordMove(node, parentId, resultId, destinationKeys, parent),
 			);
 		}
 
@@ -259,14 +319,7 @@ export class PageOperationService {
 		} catch (error) {
 			return fail("io-error", `移动失败：${messageOf(error)}`);
 		}
-		let warning: string | undefined;
-		try {
-			await this.recordMove(node, targetParentId ?? "", resultId);
-		} catch (error) {
-			warning = "页面已移动，顺序或展开状态未能保存：" + messageOf(error);
-		}
-		await this.deps.refresh();
-		return warning ? { ok: true, value: resultId, warning } : ok(resultId);
+		return this.afterFileChange(resultId, () => this.recordMove(node, targetParentId ?? "", resultId, destinationKeys));
 	}
 
 	private exceedsFolderDepth(node: PageNode, targetDepth: number): boolean {
@@ -283,17 +336,20 @@ export class PageOperationService {
 		return this.relativeId(to) as PageId;
 	}
 
-	private async recordMove(node: PageNode, scope: string, resultId: PageId): Promise<void> {
-		await this.order.moveKey(scopeOfNode(node), scope, childKey(node));
-		if (node.kind === "leaf") return;
-		// 子树 ID 变更后，顺序作用域与展开状态需要跟着搬。
-		await this.order.remapScopeTree(node.id, resultId);
-		await this.deps.renameIds?.(node.id, resultId);
+	private recordMove(node: PageNode, scope: string, resultId: PageId, destinationKeys?: string[], pairedLeaf?: PageNode): Promise<void> {
+		const subtree = node.kind === "leaf" ? undefined : { from: node.id, to: resultId };
+		const paired = pairedLeaf && { scope: scopeOfNode(pairedLeaf), oldKey: childKey(pairedLeaf), newKey: pairedLeaf.title };
+		const saveOrder = () => this.order.moveKey(scopeOfNode(node), scope, childKey(node), undefined, { subtree, destinationKeys, paired });
+		return subtree ? this.saveFolderChange(node.id, resultId, saveOrder) : saveOrder();
 	}
 
 	// ---------------------------------------------------------------- 删除
 
-	async deletePage(id: PageId, options: DeleteOptions): Promise<OpResult<{ deletedPages: number }>> {
+	deletePage(id: PageId, options: DeleteOptions): Promise<OpResult<{ deletedPages: number }>> {
+		return this.run(() => this.deletePageInRoot(id, options));
+	}
+
+	private async deletePageInRoot(id: PageId, options: DeleteOptions): Promise<OpResult<{ deletedPages: number }>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 
@@ -318,18 +374,20 @@ export class PageOperationService {
 		} catch (error) {
 			return fail("io-error", `删除失败：${messageOf(error)}`);
 		}
-		await this.order.removeFromScope(scopeOfNode(node), basename(target));
-		// 整棵子树都进回收站了，它下面每一层的作用域都成了孤立条目。
-		await this.order.removeScopeTree(node.id);
-		await this.order.removeKey(node.id);
-		await this.deps.refresh();
-		return ok({ deletedPages });
+		return this.afterFileChange({ deletedPages }, () => this.order.removeEntries(
+			[{ scope: scopeOfNode(node), key: basename(target) }],
+			node.kind === "leaf" ? undefined : node.id,
+		));
 	}
 
 	// ---------------------------------------------------------------- 配对
 
 	/** 把分组目录或叶子页面原地升级为父页面。这是唯一的模型升级路径。 */
-	async pairPage(id: PageId, template?: string): Promise<OpResult<PageId>> {
+	pairPage(id: PageId, template?: string): Promise<OpResult<PageId>> {
+		return this.run(() => this.pairPageInRoot(id, template));
+	}
+
+	private async pairPageInRoot(id: PageId, template?: string): Promise<OpResult<PageId>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		if (node.kind === "parent") return ok(id);
@@ -364,8 +422,7 @@ export class PageOperationService {
 		const from = node.filePath!;
 		const folder = joinPath(dirname(from), node.title);
 		const to = joinPath(folder, basename(from));
-		const excluded = new Set(this.deps.getExcludedFolders?.().map((name) => name.toLowerCase()));
-		if (isExcludedFolder(node.title, excluded) || node.depth > DEFAULT_MAX_DEPTH) {
+		if (this.isExcluded(node.title) || node.depth > DEFAULT_MAX_DEPTH) {
 			return fail("not-allowed", "同名目录超出页面树扫描范围，无法配对");
 		}
 		if (this.changingPairs.has(node.id)) return fail("not-allowed", "此页面正在变更配对");
@@ -400,19 +457,9 @@ export class PageOperationService {
 			}
 
 			// 键从「名字.md」变成「名字」，原笔记在同级的位置需要保留。
-			let warning: string | undefined;
-			try {
-				await this.order.renameKey(scopeOfNode(node), basename(from), basename(folder));
-			} catch (error) {
-				warning = `页面已配对，手动顺序未写入：${messageOf(error)}`;
-			}
-			try {
-				await recordChildMove?.(resultId, parentId);
-			} catch (error) {
-				warning = `页面已移动，顺序或展开状态未能保存：${messageOf(error)}`;
-			}
-			await this.deps.refresh();
-			return warning ? { ok: true, value: resultId, warning } : ok(resultId);
+			return await this.afterFileChange(resultId, () => recordChildMove
+				? recordChildMove(resultId, parentId)
+				: this.order.renameKey(scopeOfNode(node), basename(from), basename(folder)));
 		} catch (error) {
 			return fail("io-error", `配对失败：${messageOf(error)}`);
 		} finally {
@@ -420,7 +467,11 @@ export class PageOperationService {
 		}
 	}
 
-	async unpairPage(id: PageId): Promise<OpResult<PageId>> {
+	unpairPage(id: PageId): Promise<OpResult<PageId>> {
+		return this.run(() => this.unpairPageInRoot(id));
+	}
+
+	private async unpairPageInRoot(id: PageId): Promise<OpResult<PageId>> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里，请先重建索引");
 		if (node.kind !== "parent") return fail("not-allowed", "只有父页面可以解除配对");
@@ -472,13 +523,25 @@ export class PageOperationService {
 
 	// ---------------------------------------------------------------- 排序
 
-	async reorderScope(scope: PageId | null, keys: string[]): Promise<OpResult> {
-		await this.order.setKeys(scope ?? "", keys);
+	reorderScope(scope: PageId | null, keys: string[]): Promise<OpResult> {
+		return this.run(() => this.reorderScopeInRoot(scope, keys));
+	}
+
+	private async reorderScopeInRoot(scope: PageId | null, keys: string[]): Promise<OpResult> {
+		try {
+			await this.order.setKeys(scope ?? "", keys);
+		} catch (error) {
+			return fail("io-error", this.text("error.orderSave", "无法保存手动顺序：{detail}", messageOf(error)));
+		}
 		await this.deps.refresh();
 		return ok(undefined);
 	}
 
-	async reorderOne(id: PageId, direction: "up" | "down" | "first" | "last"): Promise<OpResult> {
+	reorderOne(id: PageId, direction: "up" | "down" | "first" | "last"): Promise<OpResult> {
+		return this.run(() => this.reorderOneInRoot(id, direction));
+	}
+
+	private async reorderOneInRoot(id: PageId, direction: "up" | "down" | "first" | "last"): Promise<OpResult> {
 		const node = this.deps.getNode(id);
 		if (!node) return fail("not-found", "页面不在索引里");
 		const scope = node.parentId;
@@ -497,7 +560,18 @@ export class PageOperationService {
 						? 0
 						: next.length;
 		next.splice(index, 0, childKey(node));
-		return this.reorderScope(scope, next);
+		return this.reorderScopeInRoot(scope, next);
+	}
+
+	cleanOrderEntries(entries: readonly { scope: string; key: string }[]): Promise<OpResult> {
+		return this.run(async () => {
+			try {
+				await this.order.removeEntries(entries);
+			} catch (error) {
+				return fail("io-error", this.text("error.orderSave", "无法保存手动顺序：{detail}", messageOf(error)));
+			}
+			return ok(undefined);
+		});
 	}
 
 	private relativeId(absolutePath: string): string {
@@ -505,6 +579,11 @@ export class PageOperationService {
 		const path = normalizePath(absolutePath);
 		if (root === "") return path;
 		return path.toLowerCase().startsWith(root.toLowerCase() + "/") ? path.slice(root.length + 1) : path;
+	}
+
+	private isExcluded(name: string): boolean {
+		const excluded = new Set(this.deps.getExcludedFolders?.().map((entry) => entry.toLowerCase()));
+		return isExcludedFolder(name, excluded);
 	}
 }
 
