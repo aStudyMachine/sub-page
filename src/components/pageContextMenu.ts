@@ -19,6 +19,15 @@ export function openPageMenu(plugin: SubPagePlugin, event: MouseEvent, target: M
 /** 移动端长按没有 MouseEvent，只给坐标。条目与右键完全一致。 */
 export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: number }, target: MenuTarget): void {
 	const menu = new Menu();
+	const operations = plugin.service.operations;
+	const onCurrentRoot = (action: () => void) => () => {
+		if (plugin.service.isCurrentOperationSource(operations)) action();
+		else new Notice(plugin.t("error.pageRootChanged"));
+	};
+	const reorder = async (id: PageId, direction: "up" | "down" | "first" | "last") => {
+		const result = await operations.reorderOne(id, direction);
+		if (!result.ok) new Notice(result.message);
+	};
 	const node = target.node;
 	const t = (key: string, vars?: Record<string, string | number>) => plugin.t(key, vars);
 
@@ -27,30 +36,30 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.newChild"))
 				.setIcon("file-plus")
-				.onClick(() => openCreate(plugin, node.id)),
+				.onClick(onCurrentRoot(() => openCreate(plugin, node.id))),
 		);
 		menu.addItem((item) =>
-			item.setTitle(t("menu.newSibling")).setIcon("files").onClick(() => openCreate(plugin, node.parentId)),
+			item.setTitle(t("menu.newSibling")).setIcon("files").onClick(onCurrentRoot(() => openCreate(plugin, node.parentId))),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.rename"))
 				.setIcon("pencil")
-				.onClick(() => openRename(plugin, node)),
+				.onClick(onCurrentRoot(() => openRename(plugin, node))),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.moveTo"))
 				.setIcon("folder-input")
-				.onClick(() => new MovePageModal(plugin.app, plugin, node).open()),
+				.onClick(onCurrentRoot(() => new MovePageModal(plugin.app, plugin, node).open())),
 		);
 		if (node.kind === "group") {
 			menu.addItem((item) =>
 				item
 					.setTitle(t("menu.pair"))
 					.setIcon("file-plus-2")
-					.onClick(() => void pair(plugin, node)),
+					.onClick(onCurrentRoot(() => void pair(plugin, node))),
 			);
 		}
 		if (node.kind === "parent") {
@@ -58,7 +67,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 				item
 					.setTitle(t("menu.unpair"))
 					.setIcon("file-minus-2")
-					.onClick(() => void unpair(plugin, node)),
+					.onClick(onCurrentRoot(() => void unpair(plugin, node))),
 			);
 		}
 		if (node.kind === "parent" || node.kind === "leaf") {
@@ -66,7 +75,7 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 				item
 					.setTitle(t("menu.copyLink"))
 					.setIcon("link")
-					.onClick(() => void copyLink(plugin, node)),
+					.onClick(onCurrentRoot(() => void copyLink(plugin, node))),
 			);
 		}
 		const relativePath = node.filePath ?? node.folderPath;
@@ -76,27 +85,27 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 				item
 					.setTitle(t("menu.copyAbsolutePath"))
 					.setIcon("copy")
-					.onClick(() => void copyText(plugin, absolutePath, "notice.pathCopied")),
+					.onClick(onCurrentRoot(() => void copyText(plugin, absolutePath, "notice.pathCopied"))),
 			);
 		}
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.copyRelativePath"))
 				.setIcon("copy")
-				.onClick(() => void copyText(plugin, relativePath, "notice.pathCopied")),
+				.onClick(onCurrentRoot(() => void copyText(plugin, relativePath, "notice.pathCopied"))),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.openInNewTab"))
 				.setIcon("external-link")
-				.onClick(() => void openInNewTab(plugin, node)),
+				.onClick(onCurrentRoot(() => void openInNewTab(plugin, node))),
 		);
 		if (Platform.isDesktopApp) {
 			menu.addItem((item) =>
 				item
 					.setTitle(t("menu.revealInExplorer"))
 					.setIcon("folder-open")
-					.onClick(() => revealInExplorer(plugin, node)),
+					.onClick(onCurrentRoot(() => revealInExplorer(plugin, node))),
 			);
 		}
 		menu.addSeparator();
@@ -104,39 +113,39 @@ export function openPageMenuAt(plugin: SubPagePlugin, position: { x: number; y: 
 			item
 				.setTitle(t("menu.moveUp"))
 				.setIcon("arrow-up")
-				.onClick(() => void plugin.service.operations.reorderOne(node.id, "up")),
+				.onClick(onCurrentRoot(() => void reorder(node.id, "up"))),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.moveDown"))
 				.setIcon("arrow-down")
-				.onClick(() => void plugin.service.operations.reorderOne(node.id, "down")),
+				.onClick(onCurrentRoot(() => void reorder(node.id, "down"))),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.moveTop"))
 				.setIcon("arrow-up-to-line")
-				.onClick(() => void plugin.service.operations.reorderOne(node.id, "first")),
+				.onClick(onCurrentRoot(() => void reorder(node.id, "first"))),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.moveBottom"))
 				.setIcon("arrow-down-to-line")
-				.onClick(() => void plugin.service.operations.reorderOne(node.id, "last")),
+				.onClick(onCurrentRoot(() => void reorder(node.id, "last"))),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.delete"))
 				.setIcon("trash")
-				.onClick(() => void requestDelete(plugin, node)),
+				.onClick(onCurrentRoot(() => void requestDelete(plugin, node))),
 		);
 	} else {
 		menu.addItem((item) =>
 			item
 				.setTitle(t("menu.pairFolder"))
 				.setIcon("file-plus")
-				.onClick(() => openCreate(plugin, null)),
+				.onClick(onCurrentRoot(() => openCreate(plugin, null))),
 		);
 	}
 
@@ -156,8 +165,9 @@ export function openRename(plugin: SubPagePlugin, node: PageNode): void {
 }
 
 export async function pair(plugin: SubPagePlugin, node: PageNode): Promise<void> {
+	const operations = plugin.service.operations;
 	const template = await plugin.loadTemplate();
-	const result = await plugin.service.operations.pairPage(node.id, template);
+	const result = await operations.pairPage(node.id, template);
 	if (!result.ok) new Notice(result.message);
 	else if (result.warning) new Notice(result.warning);
 }
@@ -212,13 +222,15 @@ export async function openPage(plugin: SubPagePlugin, node: PageNode | undefined
 }
 
 export async function requestDelete(plugin: SubPagePlugin, node: PageNode): Promise<void> {
+	const operations = plugin.service.operations;
 	const run = async (options: { withChildren: boolean; useTrash: boolean }): Promise<void> => {
-		const result = await plugin.service.operations.deletePage(node.id, options);
+		const result = await operations.deletePage(node.id, options);
 		if (!result.ok) {
 			new Notice(result.message);
 			return;
 		}
 		new Notice(plugin.t("notice.deleted", { count: result.value.deletedPages }));
+		if (result.warning) new Notice(result.warning);
 	};
 
 	if (!plugin.settings.confirmDelete) {

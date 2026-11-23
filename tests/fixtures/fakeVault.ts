@@ -101,8 +101,9 @@ export class FakeVault implements VaultAdapter {
 	async writeText(path: string, content: string): Promise<void> {
 		const normalized = normalizePath(path);
 		const existing = this.files.get(normalized);
-		this.files.set(normalized, { content, mtime: this.tick(), ctime: existing?.ctime ?? this.clock });
-		this.emit({ kind: "modify", path: normalized });
+		const mtime = this.tick();
+		this.files.set(normalized, { content, mtime, ctime: existing?.ctime ?? mtime });
+		this.emit({ kind: "modify", path: normalized, mtime });
 	}
 
 	async writeVerifiedText(path: string, content: string, previous: string | null): Promise<void> {
@@ -194,8 +195,9 @@ export class FakeVault implements VaultAdapter {
 		const data = { ...parsed.data };
 		mutate(data);
 		const body = parsed.body;
-		this.files.set(normalized, { ...meta, content: serializeFrontMatter(data) + body, mtime: this.tick() });
-		this.emit({ kind: "modify", path: normalized });
+		const mtime = this.tick();
+		this.files.set(normalized, { ...meta, content: serializeFrontMatter(data) + body, mtime });
+		this.emit({ kind: "modify", path: normalized, mtime });
 	}
 
 	subscribe(handler: (event: VaultEvent) => void): () => void {

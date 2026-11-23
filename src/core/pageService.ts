@@ -23,6 +23,7 @@ export interface PageServiceDeps {
 	debounceMs?: number;
 	/** 子树 id 整体变了（改名 / 移动），宿主据此搬动展开状态这类按 id 存的界面状态。 */
 	onIdsRenamed?: (from: string, to: string) => Promise<void>;
+	t?(key: string, vars?: Record<string, string>): string;
 }
 
 /**
@@ -38,7 +39,15 @@ export class PageService {
 	readonly index = new PageIndex();
 	readonly order: PageOrderStore;
 	readonly metadata: PageMetadataReader;
-	readonly operations: PageOperationService;
+	private activeOperations: PageOperationService;
+	private activeRoot: string;
+	private requestedRoot: string;
+	private rootVersion = 0;
+	private activeVersion = 0;
+	private publishedVersion = 0;
+	private pendingRoot: Promise<void> | null = null;
+	private writes = Promise.resolve();
+	private writing = false;
 
 	/** 每次元数据缓存失效就 +1，界面据此丢掉自己那份渲染缓存。 */
 	metadataEpoch = 0;
@@ -46,24 +55,60 @@ export class PageService {
 	private unsubscribe: (() => void) | null = null;
 	private pending: number | null = null;
 	private refreshing: Promise<void> | null = null;
+	private readonly modifiedDuringScan = new Map<string, number>();
 	private queued = false;
 	private started = false;
 	private readonly failedCollapses = new Set<string>();
 
 	constructor(private readonly deps: PageServiceDeps) {
-		this.order = new PageOrderStore(deps.adapter, deps.settings().pageRoot, deps.orderPath);
+		this.activeRoot = this.requestedRoot = normalizePath(deps.settings().pageRoot);
+		this.order = new PageOrderStore(deps.adapter, this.activeRoot, deps.orderPath);
 		this.metadata = new PageMetadataReader(deps.adapter);
-		this.operations = new PageOperationService({
-			adapter: deps.adapter,
+		this.activeOperations = this.createOperations(0);
+	}
+
+	get operations(): PageOperationService {
+		return this.activeOperations;
+	}
+
+	isCurrentOperationSource(operations: PageOperationService): boolean {
+		return operations === this.activeOperations && this.publishedVersion === this.rootVersion;
+	}
+
+	private createOperations(version: number): PageOperationService {
+		return new PageOperationService({
+			adapter: this.deps.adapter,
 			order: this.order,
 			getNode: (id) => this.index.getNode(id),
 			getChildren: (scope) => this.index.getChildren(scope),
-			getPageRoot: () => this.deps.settings().pageRoot,
+			getPageRoot: () => this.activeRoot,
 			getExcludedFolders: () => this.deps.settings().excludedFolders,
 			collapseEmptyParents: () => this.deps.settings().collapseEmptyParents,
-			refresh: () => this.refresh(),
+			refresh: () => this.refreshNow(),
 			renameIds: (from, to) => this.deps.onIdsRenamed?.(from, to) ?? Promise.resolve(),
+			t: this.deps.t,
+			run: (action) => this.enqueueWrite(async () => {
+				if (version !== this.rootVersion) {
+					return { ok: false, reason: "page-root-changed",
+						message: this.deps.t?.("error.pageRootChanged") ?? "页面根已切换，请重新打开操作" };
+				}
+				return action();
+			}),
 		});
+	}
+
+	private enqueueWrite<T>(action: () => Promise<T>): Promise<T> {
+		const result = this.writes.then(async () => {
+			while (this.refreshing) await this.refreshing.catch(() => undefined);
+			this.writing = true;
+			try {
+				return await action();
+			} finally {
+				this.writing = false;
+			}
+		});
+		this.writes = result.then(() => undefined, () => undefined);
+		return result;
 	}
 
 	get pageRoot(): string {
@@ -93,47 +138,90 @@ export class PageService {
 	}
 
 	/** 页面根变了：顺序文件、索引、元数据缓存全部要跟着换。 */
-	async setPageRoot(pageRoot: string): Promise<void> {
+	setPageRoot(pageRoot: string, save?: () => Promise<void>): Promise<void> {
 		const root = normalizePath(pageRoot);
-		if (root === this.index.pageRoot) return;
-		this.failedCollapses.clear();
-		this.order.setPageRoot(root);
-		this.metadata.clear();
-		await this.order.load();
-		if (this.order.problem) this.deps.onProblem?.(this.order.problem);
-		await this.refresh();
+		if (root === this.requestedRoot && this.pendingRoot) return this.pendingRoot;
+		if (root === this.requestedRoot && this.activeVersion === this.rootVersion) {
+			return this.publishedVersion === this.rootVersion ? Promise.resolve() : this.refresh();
+		}
+		this.requestedRoot = root;
+		const version = ++this.rootVersion;
+		const pending = this.enqueueWrite(async () => {
+			if (version !== this.rootVersion) return;
+			try {
+				await save?.();
+			} catch (error) {
+				if (version === this.rootVersion) {
+					this.requestedRoot = this.activeRoot;
+					this.activeVersion = version;
+					await this.refreshNow();
+				}
+				throw error;
+			}
+			this.failedCollapses.clear();
+			this.activeRoot = root;
+			this.activeVersion = version;
+			this.order.setPageRoot(root);
+			this.metadata.clear();
+			this.metadataEpoch += 1;
+			await this.order.load();
+			if (this.order.problem) this.deps.onProblem?.(this.order.problem);
+			await this.refreshNow();
+		}).finally(() => {
+			if (this.pendingRoot === pending) this.pendingRoot = null;
+		});
+		this.pendingRoot = pending;
+		return pending;
 	}
 
-	async rebuild(): Promise<void> {
-		this.failedCollapses.clear();
-		await this.order.load();
-		if (this.order.problem) this.deps.onProblem?.(this.order.problem);
-		await this.refresh();
+	rebuild(): Promise<void> {
+		return this.enqueueWrite(async () => {
+			this.failedCollapses.clear();
+			await this.order.load();
+			if (this.order.problem) this.deps.onProblem?.(this.order.problem);
+			await this.refreshNow();
+		});
 	}
 
-	async refresh(): Promise<void> {
+	refresh(): Promise<void> {
+		return this.writing ? this.enqueueWrite(() => this.refreshNow()) : this.refreshNow();
+	}
+
+	private refreshNow(): Promise<void> {
 		// 同一时刻只允许一次扫描；期间来的请求合并成「再做一次」。
 		if (this.refreshing) {
 			this.queued = true;
 			return this.refreshing;
 		}
-		this.refreshing = this.doRefresh().finally(() => {
-			this.refreshing = null;
-			if (this.queued) {
-				this.queued = false;
-				void this.refresh();
-			}
-		});
+		this.refreshing = Promise.resolve().then(() => this.drainRefresh());
 		return this.refreshing;
+	}
+
+	private async drainRefresh(): Promise<void> {
+		try {
+			do {
+				this.queued = false;
+				this.modifiedDuringScan.clear();
+				await this.doRefresh();
+			} while (this.queued);
+		} finally {
+			this.modifiedDuringScan.clear();
+			this.refreshing = null;
+		}
 	}
 
 	/** 最近一次整树扫描耗时；规模问题最先看这个数。 */
 	lastScanMs: number | null = null;
 
 	private async doRefresh(): Promise<void> {
+		const version = this.activeVersion;
+		if (version !== this.rootVersion) return;
 		const settings = this.deps.settings();
 		const started = Date.now();
-		const readSnapshot = () => scan(this.deps.adapter, settings.pageRoot, {
+		const root = this.activeRoot;
+		await this.order.ensureLoaded();
+		if (version !== this.rootVersion) return;
+		const readSnapshot = () => scan(this.deps.adapter, root, {
 			order: this.order.current,
 			excludedFolders: settings.excludedFolders,
 			showEmptyFolders: settings.showEmptyFolders,
@@ -145,10 +233,10 @@ export class PageService {
 			for (const node of snapshot.nodes.values()) {
 				if (node.kind !== "parent" || node.childIds.length > 0) continue;
 				const current = this.deps.settings();
-				if (!current.collapseEmptyParents || current.pageRoot !== settings.pageRoot) break;
+				if (!current.collapseEmptyParents || version !== this.rootVersion) break;
 				candidates.add(node.folderPath);
 				if (this.failedCollapses.has(node.folderPath)) continue;
-				const result = await this.operations.collapseEmptyParent(node, settings.pageRoot);
+				const result = await this.operations.collapseEmptyParent(node, root);
 				if (result.ok || result.reason === "io-error") rescan = true;
 				if (result.ok && result.warning) this.deps.onProblem?.(result.warning);
 				if (!result.ok && result.reason === "io-error") {
@@ -157,13 +245,22 @@ export class PageService {
 					this.deps.onProblem?.(result.message);
 				}
 			}
-			if (rescan) snapshot = await readSnapshot();
+			if (rescan && version === this.rootVersion) snapshot = await readSnapshot();
 		}
+		if (version !== this.rootVersion) return;
 		for (const path of this.failedCollapses) {
 			if (!candidates.has(path)) this.failedCollapses.delete(path);
 		}
 		this.lastScanMs = Date.now() - started;
 		this.index.replace(snapshot);
+		for (const [path, mtime] of this.modifiedDuringScan) {
+			const node = this.index.findByFilePath(path);
+			if (node) this.index.updateModifiedAt(node, mtime);
+		}
+		if (this.publishedVersion !== version) {
+			this.activeOperations = this.createOperations(version);
+			this.publishedVersion = version;
+		}
 		const warnings = snapshot.warnings.filter((warning) => warning.kind !== "case-conflict");
 		if (warnings.length > 0) this.deps.onProblem?.(warnings[0].message);
 		this.deps.onChange("refresh");
@@ -181,9 +278,9 @@ export class PageService {
 			return;
 		}
 		// frontmatter 可能刚被改过（图标 / 描述），缓存必须先失效，否则树会一直显示旧图标。
-		if (event.kind === "modify" || event.kind === "rename") {
-			this.metadata.forget(event.oldPath ?? event.path);
-			this.metadata.forget(event.path);
+		if (event.kind === "modify" || event.kind === "rename" || event.kind === "delete") {
+			this.metadata.forget(event.path, event.kind !== "modify");
+			if (event.oldPath) this.metadata.forget(event.oldPath, true);
 			// 视图自己还有一层「已经补过 metadata 的 id」缓存，靠这个数字知道该丢。
 			this.metadataEpoch += 1;
 		}
@@ -192,7 +289,12 @@ export class PageService {
 			// 树形来自目录结构、标题来自文件名，正文与 frontmatter 都改不动它。
 			// 若是全量重扫，一万页的库里每存一次盘都要重建一整棵树。
 			// 只有「索引里没有的 md」例外：同步盘直接落地的新文件常常只发 modify 不发 create。
-			if (!(isMarkdownFile(event.path) && !this.index.findByFilePath(event.path))) {
+			const node = this.index.findByFilePath(event.path);
+			if (event.mtime !== undefined && isMarkdownFile(event.path)) {
+				if (this.refreshing) this.modifiedDuringScan.set(event.path, event.mtime);
+				if (node) this.index.updateModifiedAt(node, event.mtime);
+			}
+			if (node || !isMarkdownFile(event.path)) {
 				this.deps.onChange("metadata");
 				return;
 			}
@@ -201,7 +303,7 @@ export class PageService {
 	}
 
 	private touchesPageRoot(event: VaultEvent): boolean {
-		const root = this.deps.settings().pageRoot;
+		const root = this.activeRoot;
 		if (root === "") return true;
 		return isSameOrDescendantPath(event.path, root) || (!!event.oldPath && isSameOrDescendantPath(event.oldPath, root));
 	}

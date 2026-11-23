@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { FakeVault } from "../fixtures/fakeVault";
 import { scan } from "../../src/repository/pageScanner";
@@ -29,6 +30,19 @@ function buildVault(pages: number): FakeVault {
 	return vault;
 }
 
+function buildDeepVault(): FakeVault {
+	const vault = new FakeVault();
+	for (let branch = 0; branch < 12; branch += 1) {
+		let path = `分支${branch}`;
+		for (let depth = 2; depth <= 32; depth += 1) {
+			const folder = `目录${depth}`;
+			path += `/${folder}`;
+			for (let note = 0; note < 8; note += 1) vault.seedFile(`${path}/笔记${note}.md`, "");
+		}
+	}
+	return vault;
+}
+
 describe.skipIf(!running)("扫描规模基线", () => {
 	for (const pages of [100, 1000, 5000, 10000]) {
 		it(`${pages} 个页面`, async () => {
@@ -43,4 +57,32 @@ describe.skipIf(!running)("扫描规模基线", () => {
 			expect(elapsed).toBeLessThan(pages * 2);
 		});
 	}
+
+	it.each([
+		{ shape: "宽树", build: () => new FakeVault(Object.fromEntries(Array.from({ length: 10000 }, (_, index) => [`笔记${index}.md`, ""]))) },
+		{ shape: "深树", build: buildDeepVault },
+	])("$shape：耗时和快照形状", async ({ shape, build }) => {
+		const vault = build();
+		let lists = 0;
+		const listFolder = vault.listFolder.bind(vault);
+		vault.listFolder = (path) => {
+			lists += 1;
+			return listFolder(path);
+		};
+		const snapshot = await scan(vault, "");
+		const samples: number[] = [];
+		for (let trial = 0; trial < 7; trial += 1) {
+			lists = 0;
+			const started = performance.now();
+			await scan(vault, "");
+			samples.push(performance.now() - started);
+		}
+		samples.sort((a, b) => a - b);
+		const structure = [...snapshot.nodes.values()].map(({ id, parentId, childIds, descendantCount }) =>
+			[id, parentId, childIds, descendantCount]);
+		const digest = createHash("sha256").update(JSON.stringify([snapshot.roots, structure])).digest("hex").slice(0, 12);
+		console.log(`${shape}：${samples[3].toFixed(1)}ms（7 次中位数），列目录 ${lists} 次，${snapshot.nodes.size} 个节点，快照 ${digest}`);
+		expect(snapshot.nodes.size).toBe(shape === "宽树" ? 10000 : 3360);
+		expect(samples[3]).toBeLessThan(2000);
+	});
 });

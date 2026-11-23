@@ -10,6 +10,7 @@ export interface DragHandlers {
 
 export interface DragController {
 	attach(listEl: HTMLElement): void;
+	reset(): void;
 	destroy(): void;
 }
 
@@ -105,10 +106,10 @@ export function createDragController(handlers: DragHandlers): DragController {
 			element.addEventListener("dragend", onDragEnd);
 			element.addEventListener("dragleave", onDragLeave);
 		},
+		reset: onDragEnd,
 		destroy(): void {
-			clearMarks();
+			onDragEnd();
 			list = null;
-			draggedId = null;
 		},
 	};
 }

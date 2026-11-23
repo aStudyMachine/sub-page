@@ -36,6 +36,8 @@ export interface VaultEvent {
 	oldPath?: string;
 	/** rename 专用：旧路径最后一段的名字。 */
 	oldName?: string;
+	/** modify 专用：此事件对应的文件修改时间。 */
+	mtime?: number;
 }
 
 export interface VaultAdapter {

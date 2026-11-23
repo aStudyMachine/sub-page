@@ -5,7 +5,8 @@ import type SubPagePlugin from "../main";
 import { buildRow } from "../components/treeRow";
 import { iconButton, openPage, openCreate, openPageMenu, openPageMenuAt, openRename, requestDelete } from "../components/pageContextMenu";
 import { createDragController } from "../components/dragController";
-import { childKey, isDescendantId } from "../core/pageOperationService";
+import { isDescendantId } from "../core/pageOperationService";
+import type { PageOperationService } from "../core/pageOperationService";
 import { expandAncestors, flattenTree, navigate, pruneExpanded } from "./treeState";
 
 import { PageMetadata } from "../models/pageMetadata";
@@ -26,10 +27,10 @@ export class PageTreeView extends ItemView {
 	private searchEl!: HTMLInputElement;
 	private searchTerm = "";
 	private focusId: PageId | null = null;
+	private renderedOperations?: PageOperationService;
 	private lastOpenedFile: TFile | null = null;
 	private metadataCache = new Map<string, PageMetadata>();
 	private metadataEpoch = -1;
-	private searchTimer: number | null = null;
 	private drag = createDragController({
 		isForbidden: (draggedId, targetId) =>
 			draggedId === targetId || isDescendantId(targetId as PageId, draggedId as PageId),
@@ -79,8 +80,7 @@ export class PageTreeView extends ItemView {
 		}
 	}
 
-	async 	onClose(): Promise<void> {
-		if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+	async onClose(): Promise<void> {
 		this.drag.destroy();
 	}
 
@@ -96,20 +96,14 @@ export class PageTreeView extends ItemView {
 			cls: "sp-search",
 			attr: { type: "search", placeholder: this.plugin.t("action.search"), "aria-label": this.plugin.t("action.search") },
 		});
-		// 每敲一个字符就重画整棵树，大库里会有肉眼可见的卡顿；120ms 足够盖住连续输入。
+		// 先更新可操作的行，避免按 Tab 后仍能操作上一条查询的结果。
 		this.searchEl.addEventListener("input", () => {
-			if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
-			this.searchTimer = window.setTimeout(() => {
-				this.searchTimer = null;
-				this.searchTerm = this.searchEl.value;
-				this.render();
-			}, 120);
+			this.searchTerm = this.searchEl.value;
+			this.render();
 		});
 		this.searchEl.addEventListener("keydown", (event: KeyboardEvent) => {
 			if (event.key === "Escape" && this.searchEl.value !== "") {
 				event.stopPropagation();
-				if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
-				this.searchTimer = null;
 				this.searchEl.value = "";
 				this.searchTerm = "";
 				this.render();
@@ -127,6 +121,20 @@ export class PageTreeView extends ItemView {
 			}
 		});
 		this.listEl.addEventListener("keydown", (event) => this.onKeyDown(event));
+		const ownerWindow = this.listEl.ownerDocument.defaultView;
+		if (ownerWindow) {
+			// 侧栏行聚焦时优先处理 F2，避免宿主把按键交给正文标题。
+			this.registerDomEvent(ownerWindow, "keydown", (event) => {
+				if (event.key !== "F2" || !this.listEl.contains(event.target as Node | null)) return;
+				this.onKeyDown(event);
+				if (event.defaultPrevented) event.stopPropagation();
+			}, true);
+		}
+		this.listEl.addEventListener("focusout", (event) => {
+			if (!this.listEl.contains(event.relatedTarget as Node | null)) {
+				this.listEl.querySelector(".is-focused")?.removeClass("is-focused");
+			}
+		});
 		this.drag.attach(this.listEl);
 
 		this.emptyEl = container.createDiv({ cls: "sp-empty" });
@@ -141,6 +149,17 @@ export class PageTreeView extends ItemView {
 
 	render(): void {
 		if (!this.listEl) return;
+		const restoreFocus = this.listEl.contains(this.listEl.ownerDocument.activeElement);
+		const operations = this.service.operations;
+		if (this.metadataEpoch !== this.service.metadataEpoch) {
+			this.metadataEpoch = this.service.metadataEpoch;
+			this.metadataCache.clear();
+		}
+		if (this.renderedOperations !== operations) {
+			this.renderedOperations = operations;
+			this.focusId = null;
+			this.drag.reset();
+		}
 		// 展开态以设置为唯一真相，每帧重读。视图可能早于 loadSettings 构造，
 		// 构造时拿到的是默认空值；若在首帧把空集写回设置，就会把持久化的展开态洗掉。
 		// 因此 render 只读不写，变更一律由交互方法显式 setExpandedIds 落盘。
@@ -151,9 +170,16 @@ export class PageTreeView extends ItemView {
 
 		if (this.searchTerm.trim() !== "") {
 			this.renderSearch();
-			return;
+		} else {
+			this.renderTree();
 		}
+		const focusId = this.rows.find((row) => row.id === this.focusId)?.id ?? this.rows[0]?.id ?? null;
+		this.setFocusRing(focusId, restoreFocus);
+		if (!focusId && restoreFocus) this.searchEl.focus();
+		void this.ensureMetadata(this.rows);
+	}
 
+	private renderTree(): void {
 		this.rows = flattenTree({
 			getRoots: () => this.service.getRoots(),
 			getChildren: (id) => this.service.getChildren(id),
@@ -167,7 +193,6 @@ export class PageTreeView extends ItemView {
 			this.appendRow(node, { expanded: this.expanded.has(node.id), current: node.id === current });
 		}
 		this.renderEmptyState();
-		void this.ensureMetadata(this.rows);
 	}
 
 	/**
@@ -175,16 +200,15 @@ export class PageTreeView extends ItemView {
 	 * 所以先按缺省图标画出来，读到真实值再重画一次。只重画一次，避免抖动。
 	 */
 	private async ensureMetadata(nodes: PageNode[]): Promise<void> {
-		// 服务那层已经因为文件被改而失效了，这份渲染缓存也得跟着丢。
-		if (this.metadataEpoch !== this.service.metadataEpoch) {
-			this.metadataEpoch = this.service.metadataEpoch;
-			this.metadataCache.clear();
-		}
+		const epoch = this.service.metadataEpoch;
 		const missing = nodes.filter((node) => node.filePath && !this.metadataCache.has(node.id));
 		if (missing.length === 0) return;
 		let decorated = false;
 		for (const node of missing) {
-			const metadata = await this.service.metadataFor(node.id);
+			if (this.metadataCache.has(node.id)) continue;
+			const metadata = await this.service.metadataFor(node.id).catch(() => node.metadata);
+			if (epoch !== this.service.metadataEpoch) return;
+			if (this.metadataCache.has(node.id)) continue;
 			this.metadataCache.set(node.id, metadata);
 			if (metadata.icon || metadata.description) decorated = true;
 		}
@@ -193,7 +217,7 @@ export class PageTreeView extends ItemView {
 	}
 
 	private renderSearch(): void {
-		const hits = this.service.search(this.searchTerm);
+		const hits = this.rows = this.service.search(this.searchTerm);
 		this.listEl.empty();
 		this.listEl.addClass("is-search");
 		if (hits.length === 0) {
@@ -207,7 +231,6 @@ export class PageTreeView extends ItemView {
 			this.appendRow(node, { expanded: false, current: false, trail, highlight: this.searchTerm });
 		}
 		this.emptyEl.empty();
-		void this.ensureMetadata(hits);
 	}
 
 	private appendRow(node: PageNode, options: { expanded: boolean; current: boolean; trail?: string; highlight?: string }): void {
@@ -217,6 +240,8 @@ export class PageTreeView extends ItemView {
 			metadata: this.metadataCache.get(node.id) ?? node.metadata,
 		});
 		this.listEl.appendChild(row);
+		const operations = this.service.operations;
+		row.addEventListener("focus", () => this.setFocusRing(node.id, false));
 		row.addEventListener("click", (event) => this.onRowClick(event, node));
 		row.addEventListener("contextmenu", (event) => {
 			event.preventDefault();
@@ -225,14 +250,14 @@ export class PageTreeView extends ItemView {
 			openPageMenu(this.plugin, event, { node });
 		});
 		// 移动端没有右键：长按 500ms 弹出同一套菜单。
-		if (!Platform.isDesktopApp) this.attachLongPress(row, node);
+		if (!Platform.isDesktopApp) this.attachLongPress(row, node, operations);
 	}
 
 	private renderEmptyState(): void {
 		this.emptyEl.empty();
 		if (this.rows.length > 0) return;
-		const root = this.plugin.settings.pageRoot;
-		if (root !== "" && !this.service.index.current.nodes.size) {
+		const { pageRoot: root, rootMissing } = this.service.index.current;
+		if (rootMissing) {
 			// 页面根不存在与页面根为空要分开说 —— 前者是配置错了。
 			this.emptyEl.createDiv({ cls: "sp-empty-text", text: this.plugin.t("notice.rootMissing", { path: root }) });
 			const pick = this.emptyEl.createEl("button", { text: this.plugin.t("action.chooseRoot") });
@@ -256,7 +281,7 @@ export class PageTreeView extends ItemView {
 		const opensNote = node.kind !== "group" && !(canToggle && target.closest(".sp-icon"));
 		const shouldToggleParent = node.kind === "parent" && canToggle &&
 			(!opensNote || !this.expanded.has(node.id) || this.currentPageId() === node.id);
-		if (node.kind === "group" || shouldToggleParent) this.toggle(node);
+		if ((node.kind === "group" && canToggle) || shouldToggleParent) this.toggle(node);
 		this.setFocusRing(node.id);
 		if (opensNote) void openPage(this.plugin, node);
 	}
@@ -270,6 +295,10 @@ export class PageTreeView extends ItemView {
 	}
 
 	private onKeyDown(event: KeyboardEvent): void {
+		const target = event.target as HTMLElement | null;
+		const id = target?.closest(".sp-row")?.getAttribute("data-id");
+		const node = this.rows.find((row) => row.id === id);
+		if (!node) return;
 		const map: Record<string, "up" | "down" | "left" | "right" | "home" | "end"> = {
 			ArrowUp: "up",
 			ArrowDown: "down",
@@ -281,7 +310,8 @@ export class PageTreeView extends ItemView {
 		const direction = map[event.key];
 		if (direction) {
 			event.preventDefault();
-			const result = navigate(this.rows, this.focusId, direction, this.expanded);
+			if (this.searchTerm.trim() && (direction === "left" || direction === "right")) return;
+			const result = navigate(this.rows, node.id, direction, this.expanded);
 			if (result.focusId) {
 				this.focusId = result.focusId;
 				if (result.expanded !== null) {
@@ -294,8 +324,6 @@ export class PageTreeView extends ItemView {
 			}
 			return;
 		}
-		const node = this.focusId ? this.service.getNode(this.focusId) : undefined;
-		if (!node) return;
 		if (event.key === "Enter") {
 			event.preventDefault();
 			void openPage(this.plugin, node);
@@ -308,21 +336,24 @@ export class PageTreeView extends ItemView {
 		}
 	}
 
-	private setFocusRing(id: string): void {
+	private setFocusRing(id: PageId | null, focus = true): void {
 		if (!this.listEl) return;
-		for (const row of Array.from(this.listEl.children)) {
-			const element = row as HTMLElement;
+		this.focusId = id;
+		let target: HTMLElement | undefined;
+		for (const element of this.listEl.querySelectorAll<HTMLElement>(".sp-row")) {
 			const isTarget = element.getAttribute("data-id") === id;
-			element.toggleClass("is-focused", isTarget);
+			element.toggleClass("is-focused", isTarget && (focus || element === element.ownerDocument.activeElement));
 			element.setAttribute("tabindex", isTarget ? "0" : "-1");
+			if (isTarget) target = element;
 		}
-		this.listEl.querySelector<HTMLElement>(`.sp-row[data-id="${cssEscape(id)}"]`)?.focus();
+		if (focus) target?.focus();
 	}
 
-	private attachLongPress(row: HTMLElement, node: PageNode): void {
+	private attachLongPress(row: HTMLElement, node: PageNode, operations: PageOperationService): void {
 		let timer: number | null = null;
 		row.addEventListener("touchstart", () => {
 			timer = window.setTimeout(() => {
+				if (!row.isConnected || !this.service.isCurrentOperationSource(operations)) return;
 				const rect = row.getBoundingClientRect();
 				// 长按弹的是同一套菜单：移动端没有右键，条目不该有两份实现。
 				openPageMenuAt(this.plugin, { x: rect.left + 24, y: rect.top + rect.height / 2 }, { node });
@@ -339,45 +370,22 @@ export class PageTreeView extends ItemView {
 	// ------------------------------------------------------------ 拖拽落点
 
 	private moveAsChild(draggedId: string, targetId: string | null): void {
-		void this.service.operations.movePage(draggedId as PageId, targetId as PageId | null).then((result) => {
+		const operations = this.service.operations;
+		void operations.movePage(draggedId as PageId, targetId as PageId | null).then((result) => {
 			if (!result.ok) {
 				new Notice(result.message);
 				return;
 			}
 			if (result.warning) new Notice(result.warning);
-			if (targetId && this.expandPageAncestors(result.value)) this.render();
+			if (targetId && this.service.isCurrentOperationSource(operations) && this.expandPageAncestors(result.value)) this.render();
 		});
 	}
 
 	private reorderBefore(draggedId: string, targetId: string, position: "before" | "after"): void {
-		const dragged = this.service.getNode(draggedId as PageId);
-		const target = this.service.getNode(targetId as PageId);
-		if (!dragged || !target) return;
-		// 跨作用域拖拽 = 移动 + 排序，一步做完，避免出现「移过去了但顺序没跟上」。
-		const scope = target.parentId;
-		if ((dragged.parentId ?? "") !== (scope ?? "")) {
-			void this.service.operations.movePage(dragged.id, scope).then((result) => {
-				if (!result.ok) {
-					new Notice(result.message);
-					return;
-				}
-				this.reorderWithin(result.value, target.id, position);
-			});
-			return;
-		}
-		this.reorderWithin(dragged.id, target.id, position);
-	}
-
-	private reorderWithin(draggedId: PageId, targetId: PageId, position: "before" | "after"): void {
-		const target = this.service.getNode(targetId);
-		if (!target) return;
-		const siblings = this.service.getChildren(target.parentId).map((node) => node.id);
-		const withoutDragged = siblings.filter((id) => id !== draggedId);
-		const anchor = withoutDragged.indexOf(targetId);
-		const index = position === "before" ? anchor : anchor + 1;
-		withoutDragged.splice(index, 0, draggedId);
-		const keys = withoutDragged.map((id) => this.service.getNode(id)).filter((node): node is PageNode => !!node).map(childKey);
-		void this.service.operations.reorderScope(target.parentId, keys);
+		void this.service.operations.moveBeside(draggedId as PageId, targetId as PageId, position).then((result) => {
+			if (!result.ok) new Notice(result.message);
+			else if (result.warning) new Notice(result.warning);
+		});
 	}
 
 	// ------------------------------------------------------------ 当前页面

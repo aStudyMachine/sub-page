@@ -3,6 +3,7 @@ import type SubPagePlugin from "../main";
 import { PageNode } from "../models/pageNode";
 import { OrphanEntry } from "../core/structureIssues";
 import { ConfirmModal } from "./pageModals";
+import type { PageOperationService } from "../core/pageOperationService";
 
 /** 一次改这么多目录已经不是顺手清理了，先让用户看一眼。 */
 const BULK_CONFIRM_THRESHOLD = 50;
@@ -16,12 +17,14 @@ const BULK_CONFIRM_THRESHOLD = 50;
  */
 export class StructureModal extends Modal {
 	private bodyEl!: HTMLElement;
+	private readonly operations: PageOperationService;
 
 	constructor(
 		app: App,
 		private readonly plugin: SubPagePlugin,
 	) {
 		super(app);
+		this.operations = plugin.service.operations;
 	}
 
 	onOpen(): void {
@@ -32,6 +35,10 @@ export class StructureModal extends Modal {
 	}
 
 	private render(): void {
+		if (!this.plugin.service.isCurrentOperationSource(this.operations)) {
+			this.close();
+			return;
+		}
 		this.bodyEl.empty();
 		const report = this.plugin.service.structureReport();
 		let problems = 0;
@@ -44,7 +51,7 @@ export class StructureModal extends Modal {
 				row.createSpan({ cls: "sp-structure-path", text: pathOf(orphan) });
 				row.createSpan({ cls: "sp-structure-reason", text: this.plugin.t("structure.orphan") });
 				row.createEl("button", { text: this.plugin.t("structure.clean") }).addEventListener("click", () => {
-					void this.plugin.service.order.removeFromScope(orphan.scope, orphan.key).then(() => this.render());
+					void this.cleanAll([orphan]);
 				});
 			}
 			if (report.orphans.length > 1) {
@@ -129,16 +136,16 @@ export class StructureModal extends Modal {
 	}
 
 	private async cleanAll(orphans: OrphanEntry[]): Promise<void> {
-		for (const orphan of orphans) {
-			await this.plugin.service.order.removeFromScope(orphan.scope, orphan.key);
-		}
+		const result = await this.operations.cleanOrderEntries(orphans);
+		if (!result.ok) new Notice(result.message);
 		this.render();
 	}
 
 	private async pairOne(node: PageNode): Promise<void> {
 		const template = await this.plugin.loadTemplate();
-		const result = await this.plugin.service.operations.pairPage(node.id, template);
+		const result = await this.operations.pairPage(node.id, template);
 		if (!result.ok) new Notice(result.message);
+		else if (result.warning) new Notice(result.warning);
 		this.render();
 	}
 
@@ -147,8 +154,13 @@ export class StructureModal extends Modal {
 		// 逐个补齐：中途失败也要让已完成的留在结果里，而不是整体回滚。
 		let failed = 0;
 		for (const node of nodes) {
-			const result = await this.plugin.service.operations.pairPage(node.id, template);
+			const result = await this.operations.pairPage(node.id, template);
+			if (!result.ok && result.reason === "page-root-changed") {
+				new Notice(result.message);
+				break;
+			}
 			if (!result.ok) failed += 1;
+			else if (result.warning) new Notice(result.warning);
 		}
 		if (failed > 0) new Notice(this.plugin.t("structure.bulkFailed", { count: failed }), 6000);
 		this.render();

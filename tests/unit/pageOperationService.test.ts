@@ -62,7 +62,12 @@ interface Harness {
 	refresh(): Promise<void>;
 }
 
-async function harness(vault: FakeVault, pageRoot = "", excludedFolders: string[] = []): Promise<Harness> {
+async function harness(
+	vault: FakeVault,
+	pageRoot = "",
+	excludedFolders: string[] = [],
+	renameIds?: (from: string, to: string) => Promise<void>,
+): Promise<Harness> {
 	const index = new PageIndex();
 	const order = new PageOrderStore(vault, pageRoot, ORDER_FILE_NAME);
 	await order.load();
@@ -77,12 +82,82 @@ async function harness(vault: FakeVault, pageRoot = "", excludedFolders: string[
 		getChildren: (scope) => index.getChildren(scope),
 		getPageRoot: () => pageRoot,
 		getExcludedFolders: () => excludedFolders,
+		renameIds,
 		refresh,
 	});
 	return { vault, index, order, ops, refresh };
 }
 
 const id = (value: string) => value as PageId;
+
+describe("写入后的状态一致性", () => {
+	it("删除同名根页面时保留其他作用域的排序", async () => {
+		const h = await harness(new FakeVault({ "A.md": "", "B.md": "", "子目录/A.md": "", "子目录/B.md": "" }));
+		await h.ops.reorderScope(null, ["A.md", "B.md", "子目录"]);
+		await h.ops.reorderScope(id("子目录"), ["B.md", "A.md"]);
+		await h.ops.deletePage(id("A.md"), { withChildren: true, useTrash: true });
+		expect(h.order.getKeys("")).toEqual(["B.md", "子目录"]);
+		expect(h.order.getKeys("子目录")).toEqual(["B.md", "A.md"]);
+		expect(h.index.getNode(id("A.md"))).toBeUndefined();
+	});
+
+	it.each(["顺序", "展开状态"])("%s保存失败时仍刷新改名结果并尝试另一个保存", async (failedSave) => {
+		const renameIds = vi.fn(async () => {
+			if (failedSave === "展开状态") throw new Error("展开状态保存失败");
+		});
+		const h = await harness(sampleVault(), "", [], renameIds);
+		await h.ops.reorderScope(null, ["项目A", "首页.md"]);
+		const renameKey = vi.spyOn(h.order, "renameKey");
+		if (failedSave === "顺序") renameKey.mockRejectedValueOnce(new Error("顺序保存失败"));
+		expect(await h.ops.renamePage(id("项目A"), "项目B")).toMatchObject({
+			ok: true, value: "项目B", warning: expect.stringContaining(`${failedSave}保存失败`),
+		});
+		expect(renameIds).toHaveBeenCalledExactlyOnceWith("项目A", "项目B");
+		expect(renameKey).toHaveBeenCalledOnce();
+		expect(h.index.getNode(id("项目B"))?.kind).toBe("parent");
+		expect(h.index.getNode(id("项目A"))).toBeUndefined();
+	});
+
+	it("改名回滚失败时提示两次错误并扫描实际目录", async () => {
+		const vault = sampleVault();
+		const h = await harness(vault);
+		const originalRename = vault.renameFolder.bind(vault);
+		vi.spyOn(vault, "renameFolder").mockImplementation((from, to) => from === "项目B"
+			? Promise.reject(new Error("目录回滚失败"))
+			: originalRename(from, to));
+		vi.spyOn(vault, "renameFile").mockRejectedValueOnce(new Error("笔记改名失败"));
+		const result = await h.ops.renamePage(id("项目A"), "项目B");
+		expect(result).toMatchObject({
+			ok: false, reason: "io-error", message: expect.stringContaining("笔记改名失败 / 目录回滚失败"),
+		});
+		expect(h.index.getNode(id("项目B"))?.kind).toBe("group");
+		expect(h.index.getNode(id("项目A"))).toBeUndefined();
+	});
+
+	it.each(["parent", "group", "leaf"])("目标为 %s 时允许第 32 层目录并拒绝第 33 层", async (kind) => {
+		const makeTarget = (depth: number) => `${Array.from({ length: depth - 1 }, (_, index) => `d${index}`).join("/")}/目标`;
+		for (const depth of [DEFAULT_MAX_DEPTH - 1, DEFAULT_MAX_DEPTH]) {
+			const target = makeTarget(depth);
+			const targetFile = kind === "leaf" ? `${target}.md` : `${target}/${kind === "parent" ? "目标" : "子页"}.md`;
+			const h = await harness(new FakeVault({ "移动/移动.md": "", [targetFile]: "" }));
+			const targetId = id(kind === "leaf" ? targetFile : target);
+			const result = await h.ops.movePage(id("移动"), targetId);
+			const allowed = depth === DEFAULT_MAX_DEPTH - 1;
+			expect(result.ok).toBe(allowed);
+			expect(h.index.getNode(id(`${target}/移动`))?.kind).toBe(allowed ? "parent" : undefined);
+			expect(h.vault.content("移动/移动.md")).toBe(allowed ? undefined : "");
+		}
+	});
+
+	it("拒绝把父页面或分组目录改成排除名", async () => {
+		const h = await harness(sampleVault(), "", ["Excluded"]);
+		for (const node of ["项目A", "Java"]) {
+			expect(await h.ops.renamePage(id(node), "excluded")).toMatchObject({ ok: false, reason: "not-allowed" });
+			expect(h.index.getNode(id(node))).toBeDefined();
+		}
+		expect(h.vault.folderPaths()).not.toContain("excluded");
+	});
+});
 
 describe("新建入口的目标位置", () => {
 	it.each([
@@ -120,7 +195,7 @@ describe("新建入口的目标位置", () => {
 			t: (key: string) => key,
 			loadTemplate: async () => "模板",
 			currentPage: () => h.index.getNode(id("首页.md")),
-			service: { nodeForSourcePath, getChildren: () => [], operations: { pairPage } },
+			service: { nodeForSourcePath, getChildren: () => [], operations: { pairPage }, isCurrentOperationSource: () => true },
 			registerMarkdownCodeBlockProcessor: processor,
 			registerBlockRefresher: vi.fn(),
 		} as unknown as SubPagePlugin;
@@ -170,7 +245,7 @@ describe("侧栏菜单复制路径", () => {
 		const absolutePath = `C:\\笔记库\\${relativePath.replaceAll("/", "\\")}`;
 		const getAbsolutePath = vi.fn(() => absolutePath);
 		const writeText = vi.fn(async () => {});
-		const plugin = { t: (key: string) => key, service: { getAbsolutePath } } as unknown as SubPagePlugin;
+	const plugin = { t: (key: string) => key, service: { getAbsolutePath, isCurrentOperationSource: () => true } } as unknown as SubPagePlugin;
 		vi.stubGlobal("navigator", { clipboard: { writeText } });
 		try {
 			menu.items.clear();
@@ -222,7 +297,7 @@ describe("新建页面", () => {
 	it("在叶子页面下新建时配对原笔记，并保留其手动顺序", async () => {
 		const h = await harness(sampleVault());
 		await h.ops.reorderScope(null, ["笔记规范.md", "首页.md"]);
-		const plugin = { app: {}, t: (key: string) => key, service: { getAbsolutePath: () => null } } as unknown as SubPagePlugin;
+		const plugin = { app: {}, t: (key: string) => key, service: { getAbsolutePath: () => null, operations: h.ops, isCurrentOperationSource: () => true } } as unknown as SubPagePlugin;
 		const node = h.index.getNode(id("首页.md"))!;
 		menu.items.clear();
 		menu.openCreate.mockClear();
@@ -244,7 +319,7 @@ describe("新建页面", () => {
 	});
 
 	it("空白区菜单使用共用的默认名称创建根页面", () => {
-		const plugin = { app: {}, t: (key: string) => key } as unknown as SubPagePlugin;
+		const plugin = { app: {}, t: (key: string) => key, service: { isCurrentOperationSource: () => true } } as unknown as SubPagePlugin;
 		menu.items.clear();
 		menu.openCreate.mockClear();
 		openPageMenuAt(plugin, { x: 0, y: 0 }, { node: null });
