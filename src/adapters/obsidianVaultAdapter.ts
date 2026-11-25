@@ -59,7 +59,7 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		if (!(folder instanceof TFolder)) return false;
 		const { files, folders } = await this.listFolderContents(path);
 		if (files.length || folders.length) return false;
-		// 库内回收站避免使用可能永久删除目录的宿主偏好。
+		// 检查后可能有同步文件写入，自动清理固定走库内回收站以便恢复。
 		await this.app.vault.trash(folder, false);
 		return true;
 	}
@@ -182,18 +182,12 @@ export class ObsidianVaultAdapter implements VaultAdapter {
 		});
 	}
 
-	async trash(path: string, system = true): Promise<void> {
+	async trash(path: string): Promise<void> {
 		const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
 		if (!target) return;
-		if (system) {
-			// 1.15.1 起系统回收失败返回 false，旧版类型仍声明 void。
-			const result: unknown = await this.app.fileManager.trashFile(target);
-			if (result === false) throw new Error(target.path);
-			return;
-		}
-		// 永久删除必须绕开 fileManager —— 它只会把文件挪进回收站。
-		// force=true 是宿主的确认关口，调用方（删除弹窗）已经问过用户了。
-		await this.app.vault.delete(target, true);
+		// 1.15.1 起系统回收失败返回 false，旧版类型仍声明 void。
+		const result: unknown = await this.app.fileManager.trashFile(target);
+		if (result === false) throw new Error(target.path);
 	}
 
 	async readFrontMatter(path: string): Promise<Record<string, unknown> | null> {

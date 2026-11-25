@@ -1,4 +1,5 @@
 import { Menu, Notice, Platform, TFile, setIcon } from "obsidian";
+import type { DeleteOptions } from "../core/pageOperationService";
 import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import type SubPagePlugin from "../main";
@@ -223,7 +224,7 @@ export async function openPage(plugin: SubPagePlugin, node: PageNode | undefined
 
 export async function requestDelete(plugin: SubPagePlugin, node: PageNode): Promise<void> {
 	const operations = plugin.service.operations;
-	const run = async (options: { withChildren: boolean; useTrash: boolean }): Promise<void> => {
+	const run = async (options: DeleteOptions): Promise<void> => {
 		const result = await operations.deletePage(node.id, options);
 		if (!result.ok) {
 			new Notice(result.message);
@@ -234,7 +235,7 @@ export async function requestDelete(plugin: SubPagePlugin, node: PageNode): Prom
 	};
 
 	if (!plugin.settings.confirmDelete) {
-		await run({ withChildren: node.kind !== "leaf", useTrash: true });
+		await run({ withChildren: node.kind !== "leaf" });
 		return;
 	}
 	new DeletePageModal(plugin.app, plugin, node, (options) => void run(options)).open();

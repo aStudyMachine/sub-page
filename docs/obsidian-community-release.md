@@ -10,7 +10,9 @@
 | 已有条目预审（发版硬门禁） | 条目管理中的 **Review branch** | 候选分支对应的 SHA，等待报告 `Completed` 且零 Error；未出报告或仍有 Error 不得合 `main` |
 | 已有条目发正式版 | 条目管理中的 **Check for new releases** | 目标版本正式报告 `Completed`、零 Error、Build verification Pass |
 
-`Pending` 和 “A scan has been queued” 表示进入队列。刷新门户后按版本或候选 SHA 打开对应报告。Warning 和 Recommendation 可逐项评估。例如当前保留自动清理的库内回收站、经确认的永久删除和用户触发的剪贴板写入。修复正式版的 Error 需要升版。 [首次提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin) [条目管理指南](https://docs.obsidian.md/community-directory/manage-entry)
+**Review branch** 扫描候选 SHA 的源代码和依赖。**Build verification** 在正式评审中重建源码并比对 GitHub Release 资产。打标签前，用同一 SHA 的干净构建与 GitHub dry run 核对三个资产的校验和。 [条目管理指南](https://docs.obsidian.md/community-directory/manage-entry)
+
+`Pending` 和 “A scan has been queued” 表示进入队列。刷新门户后按版本或候选 SHA 打开对应报告。Warning 和 Recommendation 可逐项评估。主动删除页面遵循宿主偏好，自动清理空目录固定走库内回收站以便恢复，剪贴板写入由用户操作触发。修复正式版的 Error 需要升版。 [空目录清理决策](adr/0005-host-api-only.md) [首次提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
 ## 构建证明
 
@@ -41,3 +43,4 @@ gh attestation verify "FILE" --repo aStudyMachine/sub-page \
 | 0.1.0 | 首次上架，正式评审零 Error，13 Warning、4 Recommendation，Build verification Pass。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.0) |
 | 0.1.1 | 预审及正式评审零 Error，正式评审保留 2 Warning、1 Recommendation，Build verification Pass。验证三个独立资产及构建证明。镜像待同步时完成宿主直接安装和 0.1.0 升级。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.1) |
 | 0.1.2 | 正式评审零 Error，保留 2 Warning、1 Recommendation（剪贴板访问），Build verification Pass（main.js 字节级复现）。验证三个独立资产及构建证明。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.2) |
+| 0.1.3 | `c307fe7` 预审及 `7d7c4e8` 正式评审均零 Error。正式报告有 3 Warning、1 Recommendation，Build verification Pass。第三条 Warning 指向从依赖对象取出的翻译回调，调用方传入箭头函数，保留了插件实例的绑定。三个发布资产的校验和与 dry run 一致，构建证明均通过。Obsidian 1.15.0 隔离库通过社区目录搜索、安装和启用，以及宿主安装器从 0.1.2 升级并保留插件数据。[GitHub Release](https://github.com/aStudyMachine/sub-page/releases/tag/0.1.3) |

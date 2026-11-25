@@ -176,13 +176,13 @@ describe("启动与刷新", () => {
 		const trash = vault.trash.bind(vault);
 		const resume = gate();
 		const rename = vi.spyOn(vault, "renameFile");
-		vi.spyOn(vault, "trash").mockImplementationOnce(async (path, system) => {
+		vi.spyOn(vault, "trash").mockImplementationOnce(async (path) => {
 			await resume.ready;
-			return trash(path, system);
+			return trash(path);
 		});
 		try {
 			settings.collapseEmptyParents = true;
-			const deletion = service.operations.deletePage(id("A"), { withChildren: true, useTrash: true });
+			const deletion = service.operations.deletePage(id("A"), { withChildren: true });
 			const refresh = Promise.resolve().then(() => service.refresh());
 			await settle(0);
 			resume.release();
@@ -320,7 +320,7 @@ describe("页面根切换", () => {
 			});
 			await saving.ready;
 			const moveToA = service.setPageRoot("A");
-			const stale = oldOperations.deletePage(id("同名.md"), { withChildren: true, useTrash: true });
+			const stale = oldOperations.deletePage(id("同名.md"), { withChildren: true });
 			resume.release();
 			await Promise.all([moveToB, moveToA]);
 			expect(await stale).toMatchObject({ ok: false, reason: "page-root-changed" });
@@ -463,7 +463,7 @@ describe("与操作服务协作", () => {
 	it("删除后索引立刻消失", async () => {
 		const { service } = makeService(sampleVault());
 		await service.start();
-		await service.operations.deletePage(id("首页.md"), { withChildren: true, useTrash: true });
+		await service.operations.deletePage(id("首页.md"), { withChildren: true });
 		expect(service.getNode(id("首页.md"))).toBeUndefined();
 		service.dispose();
 	});

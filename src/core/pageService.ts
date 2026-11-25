@@ -23,7 +23,7 @@ export interface PageServiceDeps {
 	debounceMs?: number;
 	/** 子树 id 整体变了（改名 / 移动），宿主据此搬动展开状态这类按 id 存的界面状态。 */
 	onIdsRenamed?: (from: string, to: string) => Promise<void>;
-	t?(key: string, vars?: Record<string, string>): string;
+	t?: (key: string, vars?: Record<string, string>) => string;
 }
 
 /**

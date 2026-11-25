@@ -11,7 +11,7 @@ description: 准备或发布 Sub Page 的 GitHub Release，处理首次上架、
 
 1. 从同步后的 `dev` 准备候选。运行 `npm run bump -- <x.y.z>`，按 [Release 说明格式](../../../CONTRIBUTING.md#release-说明的统一格式) 更新变更记录和版本说明。核对 manifest、兼容表、package 和锁文件。
 2. 运行 `npm ci`、`npm test`、`npm run build`、`npm run test:e2e:strict`。e2e 是本地门禁：它需要本机 Obsidian 与 `test-vault/sandbox`，不可用时严格模式会直接失败；确实不具备环境时，改为在报告里记「e2e 未执行，已按手动清单全量验收」，不要静默跳过。校验和比对只需对齐源码 SHA、锁文件与内嵌文件行尾——Node 版本不参与产物生成；本机没有 Node 22 时，以 CI 的 `checksums_digest` 与下载资产字节为准。按 [手动验收清单](../../../CONTRIBUTING.md#手动验收清单) 在样例库验收变更涉及的场景（清单开头标了哪些条目已被 e2e 覆盖），再按影响范围验证全新安装、上版升级、数据保留与独立窗口交互。部署步骤见 [部署 Skill](../sub-page-vault-deploy/SKILL.md)。
-3. **预审门禁（硬规范，不可跳过）**：已有社区条目时，先把候选推到独立分支，用门户的 **Review branch** 指向该分支最新 SHA，等报告 `Completed`、零 Error、Build verification 通过，记录报告 SHA 与保留 Warning 的业务理由。没有这份报告，不得把候选合入 `main`、不得打 tag、不得发 Release；有 Error 就修完重新预审，不能带 Error 进入正式评审。门户或评审不可用时停下来问用户，不静默跳过。首发没有条目时没有预审入口，按首次上架流程先完成 GitHub Release。入口与状态见 [社区发布手册](../../../docs/obsidian-community-release.md)。
+3. **预审门禁**。已有社区条目时，把候选推到独立分支，用门户的 **Review branch** 审查候选 SHA。等报告达到 `Completed` 且零 Error，记录报告 SHA 与保留 Warning 的理由，再合入 `main`。有 Error 就修完重新预审。门户或评审不可用时停下来问用户。首发按首次上架流程先完成 GitHub Release。评审范围与状态见 [社区发布手册](../../../docs/obsidian-community-release.md#门户评审)。
 
 ## GitHub Release
 

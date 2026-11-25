@@ -104,7 +104,7 @@ describe("顺序作用域跟着页面路径走", () => {
 		await h.order.setKeys("项目A", ["设计", "需求.md"]);
 		await h.order.setKeys("项目A/设计", ["设计"]);
 
-		await h.ops.deletePage(id("项目A"), { withChildren: true, useTrash: true });
+		await h.ops.deletePage(id("项目A"), { withChildren: true });
 
 		expect(h.order.current).toEqual({});
 	});

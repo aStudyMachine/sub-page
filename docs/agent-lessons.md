@@ -170,7 +170,7 @@ spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在�
 
 **根因**：把「按受影响范围放行 UI 验收」扩大成了「预审也可以省」。预审是候选合入 `main` 之前唯一能拦下 Error 的环节；正式评审一旦 Error，同版本不能重发，只能升 `0.1.x+1`。
 
-**对策**：候选推独立分支 → 门户 **Review branch** → 报告 `Completed`、零 Error、Build verification Pass → 记录报告 SHA 与保留 Warning → 才合 `main`。预审不可用就停下来问用户，不静默跳过。修完重新预审，不能带 Error 进正式评审。
+**对策**：按[门户评审门禁](obsidian-community-release.md#门户评审)操作。候选分支零 Error 后才能合入 `main`，正式评审时确认 Build verification。0.1.3 的候选预审报告只包含源代码和依赖扫描。
 
 **沉淀经验**：时间紧时可省的只有手动 UI 清单里与改动无关的条目；预审、构建证明核验、校验和比对不在可省范围。这条已写进 `AGENTS.md` 硬约束与发布 Skill。
 

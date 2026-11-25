@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting, TextComponent } from "obsidian";
 import { PageId } from "../models/pageId";
 import { PageNode } from "../models/pageNode";
 import { checkName } from "../utils/nameValidator";
-import type { PageOperationService } from "../core/pageOperationService";
+import type { DeleteOptions, PageOperationService } from "../core/pageOperationService";
 import type SubPagePlugin from "../main";
 
 /**
@@ -292,20 +292,14 @@ export class MovePageModal extends InputModal {
 	}
 }
 
-export interface DeleteModalResult {
-	withChildren: boolean;
-	useTrash: boolean;
-}
-
 export class DeletePageModal extends Modal {
 	private withChildren = true;
-	private useTrash = true;
 
 	constructor(
 		app: App,
 		private readonly plugin: SubPagePlugin,
 		private readonly node: PageNode,
-		private readonly onConfirm: (options: DeleteModalResult) => void,
+		private readonly onConfirm: (options: DeleteOptions) => void,
 	) {
 		super(app);
 	}
@@ -346,15 +340,13 @@ export class DeletePageModal extends Modal {
 			}
 		}
 
-		new Setting(this.contentEl)
-			.setName(this.plugin.t("modal.delete.useTrash"))
-			.addToggle((toggle) => toggle.setValue(true).onChange((value) => (this.useTrash = value)));
+		body.createEl("p", { text: this.plugin.t("modal.delete.followObsidian") });
 
 		const buttons = this.contentEl.createDiv({ cls: "sp-modal-buttons" });
 		buttons
 			.createEl("button", { text: this.plugin.t("modal.delete.confirm"), cls: "mod-warning" })
 			.addEventListener("click", () => {
-				this.onConfirm({ withChildren: this.withChildren, useTrash: this.useTrash });
+				this.onConfirm({ withChildren: this.withChildren });
 				this.close();
 			});
 		buttons

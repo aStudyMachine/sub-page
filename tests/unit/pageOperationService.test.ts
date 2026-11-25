@@ -95,7 +95,7 @@ describe("写入后的状态一致性", () => {
 		const h = await harness(new FakeVault({ "A.md": "", "B.md": "", "子目录/A.md": "", "子目录/B.md": "" }));
 		await h.ops.reorderScope(null, ["A.md", "B.md", "子目录"]);
 		await h.ops.reorderScope(id("子目录"), ["B.md", "A.md"]);
-		await h.ops.deletePage(id("A.md"), { withChildren: true, useTrash: true });
+		await h.ops.deletePage(id("A.md"), { withChildren: true });
 		expect(h.order.getKeys("")).toEqual(["B.md", "子目录"]);
 		expect(h.order.getKeys("子目录")).toEqual(["B.md", "A.md"]);
 		expect(h.index.getNode(id("A.md"))).toBeUndefined();
@@ -661,7 +661,7 @@ it("回收失败时保留笔记和现有手动顺序", async () => {
 	const before = await h.vault.readText(ORDER_FILE_NAME);
 	h.vault.trash = async () => { throw new Error("系统回收失败"); };
 
-	const result = await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });
+	const result = await h.ops.deletePage(id("首页.md"), { withChildren: true });
 
 	expect(result).toMatchObject({ ok: false, reason: "io-error" });
 	expect(await h.vault.exists("首页.md")).toBe(true);
@@ -671,7 +671,7 @@ it("回收失败时保留笔记和现有手动顺序", async () => {
 describe("删除", () => {
 	it("删叶子页面只删那一个文件", async () => {
 		const h = await harness(sampleVault());
-		const result = await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });
+		const result = await h.ops.deletePage(id("首页.md"), { withChildren: true });
 		expect(result).toMatchObject({ ok: true, value: { deletedPages: 1 } });
 		expect(h.vault.filePaths()).not.toContain("首页.md");
 		expect(h.vault.filePaths()).toContain("笔记规范.md");
@@ -680,36 +680,30 @@ describe("删除", () => {
 	it("只删父页面笔记时保留它在同级里的顺序位置", async () => {
 		const h = await harness(sampleVault());
 		await h.order.setKeys("", ["首页.md", "项目A"]);
-		await h.ops.deletePage(id("项目A"), { withChildren: false, useTrash: true });
+		await h.ops.deletePage(id("项目A"), { withChildren: false });
 		// 目录还在，降级成同名分组目录，键没变，位置就该留着。
 		expect(h.order.getKeys("")).toEqual(["首页.md", "项目A"]);
 	});
 
 	it("删父页面但保留子页面时只删笔记，目录降级为分组目录", async () => {
 		const h = await harness(sampleVault());
-		const result = await h.ops.deletePage(id("项目A"), { withChildren: false, useTrash: true });
+		const result = await h.ops.deletePage(id("项目A"), { withChildren: false });
 		expect(result).toMatchObject({ ok: true, value: { deletedPages: 1 } });
 		expect(h.vault.filePaths()).not.toContain("项目A/项目A.md");
 		expect(h.vault.filePaths()).toContain("项目A/需求.md");
 		expect(h.index.getNode(id("项目A"))?.kind).toBe("group");
 	});
 
-	it("关掉回收站开关时把 system=false 交给适配层", async () => {
-// 开关关闭 = 用户明确要永久删除。适配层必须能区分这两条路径，
-// 否则整个勾选框就只是个装饰品（真实适配器曾经只调 trashFile）。
-const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: false });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: false }]);});
-it("默认走回收站", async () => {
-const h = await harness(sampleVault());await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: true });expect(h.vault.trashLog).toEqual([{ path: "首页.md", system: true }]);});
 it("删分组目录时计数不把自己算成一篇笔记", async () => {
                 const h = await harness(sampleVault());
                 // Java 是分组目录：jvm 下两篇 + 并发下一篇，共 3 篇，没有「Java.md」。
-                const result = await h.ops.deletePage(id("Java"), { withChildren: true, useTrash: true });
+                const result = await h.ops.deletePage(id("Java"), { withChildren: true });
                 expect(result).toMatchObject({ ok: true, value: { deletedPages: 3 } });
                 expect(h.vault.folderPaths()).not.toContain("Java");
         });
 it("删父页面连同子页面时整棵目录走", async () => {
 		const h = await harness(sampleVault());
-		const result = await h.ops.deletePage(id("项目A"), { withChildren: true, useTrash: true });
+		const result = await h.ops.deletePage(id("项目A"), { withChildren: true });
 		// 项目A 自己 + 需求.md + 设计 = 3
 		expect(result).toMatchObject({ ok: true, value: { deletedPages: 3 } });
 		expect(h.vault.folderPaths()).not.toContain("项目A");
@@ -719,23 +713,11 @@ it("删父页面连同子页面时整棵目录走", async () => {
 	it("删掉的分组目录从顺序文件里清理干净", async () => {
 		const h = await harness(sampleVault());
 		await h.ops.reorderScope(null, ["Java", "项目A"]);
-		await h.ops.deletePage(id("Java"), { withChildren: true, useTrash: true });
+		await h.ops.deletePage(id("Java"), { withChildren: true });
 		expect(h.order.getKeys("")).toEqual(["项目A"]);
 		expect(h.order.getKeys("Java")).toEqual([]);
 	});
 
-	it("useTrash=false 时走永久删除", async () => {
-		const vault = sampleVault();
-		const calls: (boolean | undefined)[] = [];
-		const original = vault.trash.bind(vault);
-		vault.trash = async (path, system) => {
-			calls.push(system);
-			return original(path, system);
-		};
-		const h = await harness(vault);
-		await h.ops.deletePage(id("首页.md"), { withChildren: true, useTrash: false });
-		expect(calls).toEqual([false]);
-	});
 });
 
 describe("配对与解除配对", () => {

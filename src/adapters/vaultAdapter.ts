@@ -61,8 +61,8 @@ export interface VaultAdapter {
 	renameFolder(from: string, to: string): Promise<void>;
 	/** 重命名文件，宿主负责更新指向它的链接。 */
 	renameFile(from: string, to: string): Promise<void>;
-	/** system=true 走系统回收站，false 走库内 .trash。 */
-	trash(path: string, system?: boolean): Promise<void>;
+	/** 按宿主的删除偏好删除用户选中的文件或目录。 */
+	trash(path: string): Promise<void>;
 	readFrontMatter(path: string): Promise<Record<string, unknown> | null>;
 	updateFrontMatter(path: string, mutate: (frontmatter: Record<string, unknown>) => void): Promise<void>;
 	subscribe(handler: (event: VaultEvent) => void): () => void;

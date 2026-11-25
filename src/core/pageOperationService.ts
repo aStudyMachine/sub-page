@@ -17,8 +17,6 @@ const fail = (reason: OpFailureReason, message: string): OpResult<never> => ({ o
 export interface DeleteOptions {
 	/** 连同子页面一起删除。false 时只删父页面自己的笔记，目录与子页面留下并降级为分组目录。 */
 	withChildren: boolean;
-	/** true 走系统回收站，false 走库内回收站。 */
-	useTrash: boolean;
 }
 
 export interface CreateOptions {
@@ -42,7 +40,7 @@ export interface OperationDeps {
 	 */
 	renameIds?(from: string, to: string): Promise<void>;
 	run?<T>(action: () => Promise<OpResult<T>>): Promise<OpResult<T>>;
-	t?(key: string, vars?: Record<string, string>): string;
+	t?: (key: string, vars?: Record<string, string>) => string;
 }
 
 /**
@@ -356,7 +354,7 @@ export class PageOperationService {
 		if (node.kind === "parent" && !options.withChildren) {
 			// 只删这一篇笔记：目录留下、子页面留下，目录降级为分组目录。
 			try {
-				await this.adapter.trash(node.filePath!, options.useTrash);
+				await this.adapter.trash(node.filePath!);
 			} catch (error) {
 				return fail("io-error", `删除失败：${messageOf(error)}`);
 			}
@@ -370,7 +368,7 @@ export class PageOperationService {
 		// 分组目录自己没有笔记，后代数就是全部页面数；父页面要把它自己那一篇算上。
 		const deletedPages = node.kind === "leaf" ? 1 : node.kind === "group" ? node.descendantCount : node.descendantCount + 1;
 		try {
-			await this.adapter.trash(target, options.useTrash);
+			await this.adapter.trash(target);
 		} catch (error) {
 			return fail("io-error", `删除失败：${messageOf(error)}`);
 		}

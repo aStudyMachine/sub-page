@@ -14,7 +14,8 @@
 - 文件系统操作一律走宿主 API：`vault.getAbstractFileByPath` / `TFolder.children` / `vault.createFolder` / `vault.create` / `fileManager.renameFile` / `vault.rename` / `vault.trash` / `vault.process` / `fileManager.processFrontMatter`，以及四个 `vault.on` 事件。
 - 插件配置目录与点号开头的旧文件不进 Vault 文件索引。顺序文件通过公开的 `vault.adapter` 读写。回归测试见 [Obsidian 适配层测试](../../tests/unit/obsidianVaultAdapter.test.ts)。
 - 安装 Agent Skill 时，更新已有 `AGENTS.md` 会先校验原文备份，再通过 `vault.adapter.process` 检查内容是否仍与读取时一致。Obsidian 1.15.1 的桌面适配器会原地写入，写入中断时保留备份以便恢复。安装路径应使用库内普通目录和文件，公开适配器无法可靠识别指向库外的文件系统链接。
-- 配对清理通过 `vault.adapter.list` 检查实际目录内容，包含宿主索引隐藏的文件。内容检查和移入回收站是两个宿主操作，外部写入可能发生在两者之间，因此自动清理使用可恢复的库内回收站。
+- 用户主动删除页面或目录时调用 `fileManager.trashFile`，由 Obsidian 的删除设置决定去向。库内回收站与永久删除的行为由[真机用例](../../tests/e2e/cases/11-delete-preference.e2e.mjs)验证。
+- 配对清理通过 `vault.adapter.list` 检查实际目录内容，包含宿主索引隐藏的文件。内容检查和移入回收站是两个宿主操作，外部写入可能发生在两者之间，因此自动清理通过 `vault.trash(folder, false)` 使用可恢复的库内回收站。
 - `src/` 下不得出现 `node:*`、`fs`、`path`、`electron` 的 import。构建把 `electron` 与 Node 内置模块列为 external，是为了让误引入在打包时才暴露，不是许可。
 - 只有 `tests/`（真实库只读冒烟）与 `scripts/`（部署、生成测试库）可以用 Node —— 它们不随插件发布。
 - 这条约束落在适配层：`src/adapters/obsidianVaultAdapter.ts` 是全项目唯一接触宿主文件 API 的地方（ADR-0003）。
