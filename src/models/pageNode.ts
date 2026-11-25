@@ -43,6 +43,7 @@ export interface ScanWarning {
 
 export interface PageTreeSnapshot {
 	pageRoot: string;
+	rootMissing: boolean;
 	nodes: Map<PageId, PageNode>;
 	roots: PageId[];
 	warnings: ScanWarning[];

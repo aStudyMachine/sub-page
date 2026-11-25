@@ -46,6 +46,7 @@ async function openTree(
 		setExpandedIds: (ids: Set<string>) => { saved = new Set(ids); setCalls += 1; },
 		service: {
 			operations: { movePage },
+			isCurrentOperationSource: () => true,
 			index,
 			getRoots: () => [branch, other],
 			getChildren: () => [note],
@@ -59,12 +60,19 @@ async function openTree(
 	Object.assign(view, {
 		buildChrome: () => {},
 		listEl: {
+			ownerDocument: { activeElement: null },
+			contains: () => false,
 			children: [],
 			empty: () => { rows.length = 0; },
 			removeClass: () => {},
 			querySelectorAll: () => rows.map((row) => ({
+				ownerDocument: { activeElement: null },
 				getAttribute: () => row.id,
-				toggleClass: (_name: string, current: boolean) => { row.current = current; },
+				toggleClass: (name: string, enabled: boolean) => {
+					if (name === "is-current") row.current = enabled;
+				},
+				setAttribute: () => {},
+				focus: () => {},
 			})),
 			querySelector: () => null,
 		},
@@ -84,7 +92,11 @@ async function openTree(
 		clickFolder: (icon = false) => view["onRowClick"](
 			{ target: { closest: () => icon ? {} : null } } as unknown as MouseEvent, branch as PageNode,
 		),
-		press: (key: string) => view["onKeyDown"]({ key, preventDefault: () => {} } as KeyboardEvent),
+		press: (key: string) => view["onKeyDown"]({
+			key,
+			target: { closest: () => ({ getAttribute: () => folder.id }) },
+			preventDefault: () => {},
+		} as unknown as KeyboardEvent),
 		open: (path: string) => {
 			if (path !== activeFile.path) activeFile = Object.assign(new TFile(), { path });
 			onFileOpen(activeFile);

@@ -2,12 +2,12 @@ import { PageId, isRootScope } from "../models/pageId";
 import { PageNode, PageTreeSnapshot } from "../models/pageNode";
 
 /**
- * 内存索引：对外只暴露查询，修改一律通过重建快照完成。
- * 快照是不可变的，所以界面拿到节点后不必担心被后台扫描改掉。
+ * 内存索引：整树扫描替换快照，笔记保存仅替换对应节点。
  */
 export class PageIndex {
 	private snapshot: PageTreeSnapshot = {
 		pageRoot: "",
+		rootMissing: false,
 		nodes: new Map(),
 		roots: [],
 		warnings: [],
@@ -65,10 +65,18 @@ export class PageIndex {
 	/** 找到能容纳页面笔记的节点：文件路径 → 节点（分组目录没有文件，返回 undefined）。 */
 	findByFilePath(filePath: string): PageNode | undefined {
 		const lowered = filePath.toLowerCase();
+		// 区分大小写的库可以同时存在仅大小写不同的笔记。
+		let caseInsensitive: PageNode | undefined;
 		for (const node of this.snapshot.nodes.values()) {
-			if (node.filePath && node.filePath.toLowerCase() === lowered) return node;
+			if (node.filePath === filePath) return node;
+			if (!caseInsensitive && node.filePath?.toLowerCase() === lowered) caseInsensitive = node;
 		}
-		return undefined;
+		return caseInsensitive;
+	}
+
+	updateModifiedAt(node: PageNode, modifiedAt: number): void {
+		if (node.modifiedAt === modifiedAt) return;
+		this.snapshot.nodes.set(node.id, { ...node, modifiedAt });
 	}
 
 /**

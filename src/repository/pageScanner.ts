@@ -1,4 +1,4 @@
-import { VaultAdapter } from "../adapters/vaultAdapter";
+import { FolderListing, VaultAdapter } from "../adapters/vaultAdapter";
 import { PageId } from "../models/pageId";
 import { EMPTY_METADATA } from "../models/pageMetadata";
 import { NodeKind, PageNode, PageTreeSnapshot, ScanWarning } from "../models/pageNode";
@@ -55,8 +55,12 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 		return normalizePath(absolutePath).slice(root.length + 1);
 	};
 
-	const visitFolder = async (folderPath: string, depth: number): Promise<{ self: TempNode | null; children: TempNode[] }> => {
-		const listing = await adapter.listFolder(folderPath);
+	const visitFolder = async (
+		folderPath: string,
+		depth: number,
+		listing: FolderListing | null = null,
+	): Promise<{ self: TempNode | null; children: TempNode[] }> => {
+		listing ??= await adapter.listFolder(folderPath);
 		if (!listing) {
 			warnings.push({ kind: "read-error", path: folderPath, message: "读不到这个目录，已跳过" });
 			return { self: null, children: [] };
@@ -143,22 +147,17 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 		return { self, children };
 	};
 
-	const rootListing = await adapter.listFolder(root.length === 0 ? "" : root);
+	const rootListing = await adapter.listFolder(root);
 	let rootChildren: TempNode[] = [];
 	let folderCount = 0;
 	if (!rootListing) {
 		warnings.push({ kind: "read-error", path: root, message: "页面根不存在" });
 	} else {
-		const visited = await visitFolder(root.length === 0 ? "" : root, 0);
+		const visited = await visitFolder(root, 0, rootListing);
 		rootChildren = visited.children;
 	}
 
-	// 页面数量直接从临时树算，不依赖 nodes 是否已经填好 —— 依赖注册顺序会在
-	// 「兄弟节点还没轮到自己」时少算，这条路径必须与遍历顺序无关。
-	const countPages = (node: TempNode): number =>
-		(node.kind === "group" ? 0 : 1) + node.children.reduce((total, child) => total + countPages(child), 0);
-
-	const flatten = (children: TempNode[], parentId: PageId | null, scope: string, depth: number): PageId[] => {
+	const flatten = (children: TempNode[], parentId: PageId | null, scope: string, depth: number) => {
 		// 同名笔记与同名目录（`项目A.md` 与 `项目A/`）会得到相同的显示名，
 		// 用 key 做第二比较键，保证每次扫描的次序完全一致。
 		const sorted = orderChildren(
@@ -166,28 +165,29 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 			options.order?.[scope],
 		);
 		const ids: PageId[] = [];
+		let pages = 0;
 		for (const child of sorted) {
-			const childIds = flatten(child.children, child.id, child.id, depth + 1);
+			const descendants = flatten(child.children, child.id, child.id, depth + 1);
 			// 只数页面，不数分组目录：删除确认里「全部后代 M 个」指的是会被一起移走的页面。
-			const descendantCount = child.children.reduce((total, grandchild) => total + countPages(grandchild), 0);
 			nodes.set(child.id, {
 				id: child.id,
 				kind: child.kind,
 				title: child.title,
 				depth,
 				parentId,
-				childIds,
+				childIds: descendants.ids,
 				filePath: child.filePath,
 				folderPath: child.folderPath,
 				metadata: EMPTY_METADATA,
-				descendantCount,
+				descendantCount: descendants.pages,
 				modifiedAt: child.mtime,
 				createdAt: child.ctime,
 			});
 			folderCount += child.kind === "group" ? 1 : 0;
+			pages += descendants.pages + (child.kind === "group" ? 0 : 1);
 			ids.push(child.id);
 		}
-		return ids;
+		return { ids, pages };
 	};
 
 	const roots = flatten(rootChildren, null, "", 1);
@@ -195,7 +195,8 @@ export async function scan(adapter: VaultAdapter, pageRoot: string, options: Sca
 	return {
 		pageRoot: root,
 		nodes,
-		roots,
+		rootMissing: rootListing === null,
+		roots: roots.ids,
 		warnings,
 		folderCount,
 		createdAt: Date.now(),

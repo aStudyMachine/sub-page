@@ -23,6 +23,8 @@
 npm install
 npm run dev        # esbuild watch
 npm test           # vitest，全部在 node 里跑内存假库
+npm run test:e2e   # CDP 驱动真实 Obsidian，界面验收（环境不具备时跳过）
+npm run test:e2e:strict # 同上，环境不具备即失败；发版前用这个
 npm run build      # tsc --noEmit + 打包
 npm run perf       # 规模基线（默认跳过）
 ```
@@ -50,6 +52,14 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 
 ## 手动验收清单
 
+先跑自动部分，再人工补剩下的：
+
+```bash
+npm run test:e2e:strict
+```
+
+`tests/e2e/` 用 CDP 驱动真实 Obsidian：每条用例把 `test-vault/sandbox` 复制到临时目录、起独立实例、跑完销毁，不碰用户已打开的库。当前覆盖清单 **1–5、9–11、27**（9 条），下面这些条目不用再手点；**7–8、12–15、19–21、24** 以及 F2 改名、拖拽视觉反馈仍需人工。环境不具备（没装 Obsidian、sandbox 缺失）时默认打印 `SKIP: 原因` 并以 0 退出，`test:e2e:strict` 会把跳过当失败。细节见 [docs/ui-cdp-harness.md](docs/ui-cdp-harness.md)。
+
 每次改到界面或写操作，按这条序列走一遍。全程约 15 分钟。
 
 准备工作：
@@ -58,6 +68,8 @@ npm run deploy -- <库名> --restart  # 部署后重启 Obsidian（仅 Windows�
 npm run sandbox:reset                 # 把样例笔记恢复原状（跑过一次验收之后必须执行）
 npm run deploy -- test-vault/sandbox   # 测试、构建并部署本次改动
 ```
+
+第一次打开样例库时确认两项设置：关闭「无子页面则删除文件夹，还原原本的页面」，否则 `sandbox:reset` 之后插件会把 `项目A/设计/设计.md` 还原成叶子页面；并保证 `.obsidian/app.json` 的 `alwaysUpdateLinks` 为 `true`，否则改名时宿主会弹「更新链接」询问，反链看起来像没更新。
 
 在 Obsidian 里 `打开文件夹作为库` 选择 `test-vault/sandbox`。若弹出「是否信任作者并启用插件」，选信任。
 页面根留空（整个库）。
@@ -158,7 +170,7 @@ Java (组) [3]          —— 分组目录，灰色文件夹图标
 
 ## 发布
 
-按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
+按 [Sub Page 发布 Skill](.agents/skills/sub-page-release/SKILL.md) 操作。发布工作流从 `main` 手动触发，默认 `dry_run`。已有社区条目时，先推候选分支并用门户 **Review branch** 预审，报告零 Error 才合 `main`——这一步是硬门禁，不因改动小或时间紧跳过。本地构建和下载的 Release 资产可用 `node scripts/release-checksums.mjs [产物目录]` 打印三个文件的 SHA-256 和与 CI 同格式的 `checksums_digest`。
 
 ### Release 说明的统一格式
 

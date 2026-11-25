@@ -147,3 +147,67 @@ Obsidian 1.15.1 的 FileManager.trashFile() 在系统回收失败时返回 false
 4. 定位手法：状态尚未就绪的时序 bug 靠静态推理反复猜很慢；临时把调用栈 + 关键状态写进 data.json 再读回，一次重启就能锁定调用链（用完即移除）。
 
 spec:198「布局就绪后扫描」与 main.ts 在 onload 首扫的偏差仍在，但与本 bug 无关。
+
+### 2.24 门户「检查新版本」的结果不在回执页
+
+**现象**：点 **Check for new releases** 后页面一直显示「A scan has been queued.」，反复刷新或再点按钮都不出结果，看起来像卡住。
+
+**根因**：那一页只是排队回执，评审在服务端异步执行；回执页不会随扫描进度更新，结果写在 dashboard 的 **Reviews** 列表里。
+
+**对策**：按钮点一次就够，之后回 dashboard 看 Reviews 列表，出现目标版本行且状态为 `Completed` 再读报告。重复点不会加速，还可能重复入队。0.1.2 的扫描在排队后约十分钟完成，期间刷新回执页没有任何信息量。
+
+### 2.25 bsk 守护进程的端口可能落在 Windows 保留区间
+
+**现象**：`bsk daemon start` 报 `bind WS server on 127.0.0.1:52800 ... os error 10013`；扩展弹窗显示「已连接」，但 `bsk browsers` 为空。
+
+**根因**：Windows 动态保留区间覆盖了 52800（`netsh int ipv4 show excludedportrange protocol=tcp` 能看到），不是端口被进程占用，`netstat` 里没有监听者。这天上午守护进程还能正常绑定，说明保留区间会随系统服务启停漂移。
+
+**对策**：管理员执行 `net stop winnat` 释放区间，再启动守护进程；收工后 `net start winnat`。已建立的监听不受恢复影响。不要改用 `--port`：扩展固定在 52800，换端口后守护进程能起但扩展连不上。
+
+### 2.26 跳过预审直接发版，把 Error 风险留到不可逆的正式评审
+
+**现象**：0.1.2 把 `dev` 直接合入 `main`、发 Release，再走正式评审；正式评审零 Error，结果属于侥幸。
+
+**根因**：把「按受影响范围放行 UI 验收」扩大成了「预审也可以省」。预审是候选合入 `main` 之前唯一能拦下 Error 的环节；正式评审一旦 Error，同版本不能重发，只能升 `0.1.x+1`。
+
+**对策**：候选推独立分支 → 门户 **Review branch** → 报告 `Completed`、零 Error、Build verification Pass → 记录报告 SHA 与保留 Warning → 才合 `main`。预审不可用就停下来问用户，不静默跳过。修完重新预审，不能带 Error 进正式评审。
+
+**沉淀经验**：时间紧时可省的只有手动 UI 清单里与改动无关的条目；预审、构建证明核验、校验和比对不在可省范围。这条已写进 `AGENTS.md` 硬约束与发布 Skill。
+
+### 2.27 CDP 的 mouseMoved 会让每次点击卡 5 秒
+
+**现象**：`tests/e2e/` 早期每个用例 10–16 s，单看 CDP `Input.dispatchMouseEvent` 只有 `mouseMoved` 恰好 5000–5017 ms，`mousePressed` / `mouseReleased` 都是 0–3 ms；窗口最小化和挪到屏幕外都一样。
+
+**根因**：Electron 对 `mouseMoved` 的输入 ack 在隐藏/后台窗口上不返回，Chromium 等满 5 s 超时才放行。点击本身并不需要先移动指针，坐标已经随 pressed/released 一起传了。
+
+**对策**：点击只发 `mousePressed` + `mouseReleased`，删掉 `mouseMoved`。整套 7 条用例从 64 s 降到 13 s。拖拽仍需要带 `buttons:1` 的 `mouseMoved`，所以拖拽用例要单独评估耗时。
+
+### 2.28 信任弹窗的时机和「插件加载失败」都是时序问题
+
+**现象**：全新 profile 首启时，若连上 CDP 后只查一次 `.modal.mod-trust-folder`，有时查不到；点了信任立刻调 `enablePlugin` 会弹「插件加载失败」并一直不加载。复用预置信任的 profile 时，启动阶段也会自动加载失败，手动 `enablePlugin` 一次才好。
+
+**根因**：信任弹窗要等库加载到某一步才挂载；点完信任后 Obsidian 自己会去加载社区插件（实测约 500 ms），这段时间里再调 `enablePlugin` 会打断它。预置信任的 profile 让 Obsidian 在更早的启动阶段尝试加载，撞上插件尚未准备好的时序。
+
+**对策**：轮询信任弹窗（不是查一次），点完先给自动加载留 8 s 再考虑显式启用；没有信任弹窗的旧 profile 等 3 s 后再显式启用。气泡里的「加载失败」不影响后续手动启用成功，但意味着这条路径要按「重试」设计，不能按「一次成功」设计。
+
+### 2.29 spawn 到的 pid 不一定是 Obsidian 主进程
+
+**现象**：用 `spawn(Obsidian.exe, [...])` 的返回值做 `taskkill /PID <pid> /T /F`，测试跑完仍留下整批 `--user-data-dir` 指向临时目录的 Obsidian 进程。
+
+**根因**：Obsidian 启动器会转手拉起真正的主进程，`spawn` 得到的 pid 可能已经退出；对已退出的 pid 执行 taskkill 不会波及新主进程及其子进程。
+
+**对策**：连上 CDP 后从渲染进程取 `require('electron').remote.process.pid`，这才是主进程。清理时先 `app.quit()` 并等端口关闭；4 s 没关再按主进程 pid 杀。测试收尾要顺手查一次 `Get-CimInstance Win32_Process -Filter "name='Obsidian.exe'"`，命令行里带 `sp-e2e-` 的应为 0 条。
+
+### 2.30 自动解除配对也要与页面写入互斥
+
+**现象**：扫描自动解除一个空父页面的配对时，删除原父页面可以返回成功，但笔记已经被自动移到上一级目录。
+
+**根因**：自动解除配对会在扫描内移动笔记和删除目录。只给界面操作排队，仍会留下扫描与删除交错执行的窗口。写入前即使等待的是空值，`await` 也会让出一个微任务。
+
+**对策**：在确认无扫描运行的同一执行段标记写入开始。外部刷新与页面写入互斥，写入内部的收尾刷新直接走扫描逻辑，避免等待自己的队列。用暂停扫描和微任务插入两种时序验收，断言笔记、目录和索引都符合写入结果。见 [页面服务回归测试](../tests/unit/pageService.test.ts)。
+
+### 2.31 侧栏快捷键要用宿主输入验收
+
+**现象**：侧栏已监听 F2，搜索结果也已聚焦，但按键仍由 Obsidian 的标题编辑命令处理。
+
+**对策**：在侧栏所属窗口的捕获阶段检查 F2，只在事件来自页面树行且已执行侧栏动作时拦截。用 CDP 发送真实键盘事件，断言打开的重命名框与聚焦的搜索命中项一致。见 [搜索验收用例](../tests/e2e/cases/04-search.e2e.mjs)。

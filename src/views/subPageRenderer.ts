@@ -5,6 +5,8 @@ import { PageMetadata } from "../models/pageMetadata";
 import { parseSubPageBlock, SubPageBlockConfig } from "../utils/subPageConfigParser";
 import { renderPageIcon } from "../components/pageIcon";
 import { openCreate, openPage, pair } from "../components/pageContextMenu";
+import { childKey } from "../core/pageOperationService";
+import { naturalCompare } from "../utils/naturalSort";
 
 export const SUBPAGES_LANGUAGE = "subpages";
 
@@ -50,15 +52,14 @@ function renderBlock(
 	let epoch = plugin.service.metadataEpoch;
 	let unloaded = false;
 	const redrawIfDecorated = (nodes: PageNode[]): void => {
+		const readEpoch = epoch;
 		void (async () => {
-			if (epoch !== plugin.service.metadataEpoch) {
-				epoch = plugin.service.metadataEpoch;
-				metadata.clear();
-			}
 			let decorated = false;
 			for (const node of nodes) {
 				if (metadata.has(node.id)) continue;
-				const value = await plugin.service.metadataFor(node.id);
+				const value = await plugin.service.metadataFor(node.id).catch(() => node.metadata);
+				if (unloaded || readEpoch !== plugin.service.metadataEpoch) return;
+				if (metadata.has(node.id)) continue;
 				metadata.set(node.id, value);
 				if (value.icon || value.description) decorated = true;
 			}
@@ -70,6 +71,11 @@ function renderBlock(
 	};
 
 	const draw = (): void => {
+		if (epoch !== plugin.service.metadataEpoch) {
+			epoch = plugin.service.metadataEpoch;
+			metadata.clear();
+		}
+		const operations = plugin.service.operations;
 		const node = plugin.service.nodeForSourcePath(ctx.sourcePath);
 		if (!node) {
 			el.createDiv({ cls: "sp-block-note", text: plugin.t("block.notAPage") });
@@ -81,11 +87,15 @@ function renderBlock(
 			box.createSpan({ text: plugin.t("block.notParent") });
 			if (node.kind === "leaf" && plugin.settings.collapseEmptyParents) {
 				const create = box.createEl("button", { text: plugin.t("block.create"), cls: "mod-cta" });
-				create.addEventListener("click", () => openCreate(plugin, node.id));
+				create.addEventListener("click", () => {
+					if (plugin.service.isCurrentOperationSource(operations)) openCreate(plugin, node.id);
+				});
 				return;
 			}
 			const pairButton = box.createEl("button", { text: plugin.t("block.pair"), cls: "mod-cta" });
-			pairButton.addEventListener("click", () => void pair(plugin, node));
+			pairButton.addEventListener("click", () => {
+				if (plugin.service.isCurrentOperationSource(operations)) void pair(plugin, node);
+			});
 			return;
 		}
 		const children = sortChildren(plugin.service.getChildren(node.id), config.sort);
@@ -94,7 +104,9 @@ function renderBlock(
 			const empty = el.createDiv({ cls: "sp-block-empty" });
 			empty.createSpan({ text: plugin.t("block.empty") });
 			const create = empty.createEl("button", { text: plugin.t("block.create"), cls: "mod-cta" });
-			create.addEventListener("click", () => openCreate(plugin, node.id));
+			create.addEventListener("click", () => {
+				if (plugin.service.isCurrentOperationSource(operations)) openCreate(plugin, node.id);
+			});
 			return;
 		}
 		const header = el.createDiv({ cls: "sp-block-header" });
@@ -131,7 +143,7 @@ function sortChildren(nodes: PageNode[], sort: SubPageBlockConfig["sort"]): Page
 	if (sort === "manual") return nodes;
 	if (sort === "created") return [...nodes].sort((a, b) => b.createdAt - a.createdAt);
 	if (sort === "modified") return [...nodes].sort((a, b) => b.modifiedAt - a.modifiedAt);
-	return nodes;
+	return [...nodes].sort((a, b) => naturalCompare(a.title, b.title) || naturalCompare(childKey(a), childKey(b)));
 }
 
 function renderList(
