@@ -15,6 +15,7 @@ Obsidian 插件：把已有笔记库变成一棵 Notion 式页面树。侧栏树
 | `docs/ui-cdp-harness.md` | CDP 驱动 UI 验收：命令、覆盖的清单条目、限制与排查 | 改界面、跑发版验收或 e2e 失败时 |
 | `.agents/skills/sub-page-vault-deploy/SKILL.md` | 本地部署和验收流程 | 部署到 Obsidian 库或验证部署时读 |
 | `.agents/skills/sub-page-release/SKILL.md` | 发版、社区评审与客户端验收 | 准备发布、处理社区评审或核验发布结果时 |
+| `.agents/skills/obsidian-cli/SKILL.md` | Obsidian CLI 用法与插件开发调试闭环（`dev:reload` / `dev:errors` / `dev:screenshot` / `dev:dom`） | 需要与运行中的 Obsidian 实例交互或做实机调试时读 |
 | `docs/obsidian-community-release.md` | 社区门户状态、构建证明和客户端目录 | 遇到审查、产物或上架状态不一致时 |
 | `docs/perf-baseline.md` | 扫描耗时实测 | 讨论性能优化之前 |
 
